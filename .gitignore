@@ -1,0 +1,11 @@
+# Python virtual environments and caches
+backend/.env
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+
+# Node / Expo artifacts live under the mobile app.
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/

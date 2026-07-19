@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Snap & Shine",
+    "slug": "snap-maslool-shine",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f0f12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Snap & Shine to access your camera so you can capture product photos.",
+          "photosPermission": "Allow Snap & Shine to access your photos so you can select product images."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Snap & Shine to access your photo library.",
+          "savePhotosPermission": "Allow Snap & Shine to save enhanced images to your library."
+        }
+      ],
+      "expo-sharing"
+    ]
+  }
+}
