@@ -74,7 +74,7 @@ def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
     """Send the cutout image to the OpenAI image edit API and return a base64 PNG string."""
     response = requests.post(
         OPENAI_IMAGE_EDIT_URL,
-        headers={"Authorization": f"******"},
+        headers={"Authorization": "Bearer " + api_key},
         files={"image": ("product-cutout.png", cutout_bytes, "image/png")},
         data={
             "model": "gpt-image-1",
