@@ -1,13 +1,13 @@
 # Maslool Snap & Shine
 
-Maslool Snap & Shine is an AI-powered product photo enhancer. The mobile app lets you capture or upload a raw product image, then the FastAPI backend removes the background with Remove.bg and sends the cutout to OpenAI for a polished white-background studio result.
+Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload a raw product image, then the FastAPI backend removes the background with Remove.bg and sends the cutout to OpenAI for a polished white-background studio result.
 
 ## Monorepo layout
 
 ```text
 snap-maslool-shine/
 ├── backend/   # FastAPI API for image enhancement
-├── mobile/    # Expo React Native app
+├── web/       # React + Vite web app
 └── README.md  # Setup and usage guide
 ```
 
@@ -15,10 +15,10 @@ snap-maslool-shine/
 
 ```text
 +-----------------------+
-|  Expo mobile app      |
-|  - camera/gallery     |
+|  React + Vite web app |
+|  - upload/drag-drop   |
 |  - processing UI      |
-|  - save/share result  |
+|  - download result    |
 +-----------+-----------+
             |
             | POST /enhance (multipart image)
@@ -37,11 +37,11 @@ snap-maslool-shine/
 
 ## What it does
 
-1. Accepts a product photo from the mobile app.
+1. Accepts a product photo from the web app.
 2. Removes the background with Remove.bg.
 3. Sends the cutout to OpenAI `gpt-image-1` with a photorealistic studio-photo prompt.
 4. Returns the final enhanced image to the app as a base64 string.
-5. Lets the user save or share the final result from the device.
+5. Lets the user download the final result from the browser.
 
 ## Backend setup (`/backend`)
 
@@ -87,32 +87,30 @@ docker build -t snap-shine-backend ./backend
 docker run --rm -p 8000:8000 --env-file ./backend/.env snap-shine-backend
 ```
 
-## Mobile setup (`/mobile`)
+## Web setup (`/web`)
 
 ### 1. Install dependencies
 
 ```bash
-cd mobile
+cd web
 npm install
 ```
 
 ### 2. Point the app at your backend
 
-The default API URL is defined in `/home/runner/work/snap-maslool-shine/snap-maslool-shine/mobile/src/constants/api.ts`:
+Set the API URL in `web/src/constants/api.ts` if needed:
 
 ```ts
 export const API_BASE_URL = 'http://localhost:8000';
 ```
 
-If you are using a physical device, replace `localhost` with your computer's LAN IP or deployed backend URL.
-
-### 3. Start Expo
+### 3. Start the web app
 
 ```bash
-npx expo start
+npm run dev
 ```
 
-Then open the project in Expo Go or an emulator.
+The app will run at `http://localhost:3000`.
 
 ## API keys
 
@@ -152,6 +150,6 @@ Always verify the latest pricing on the official provider pages before launch.
 
 ## Notes
 
-- The mobile UI uses a dark theme with gold accents for a premium feel.
+- The web UI uses a dark theme with gold accents for a premium feel.
 - The backend loads environment variables with `python-dotenv`.
 - The app is scaffolded for local development first; production deployment will require updating the backend URL and tightening CORS.
