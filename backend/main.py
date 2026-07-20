@@ -17,11 +17,19 @@ load_dotenv()
 REMOVE_BG_URL = "https://api.remove.bg/v1.0/removebg"
 OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits"
 ENHANCEMENT_PROMPT = (
-    "This is a real product photo with the background already removed. "
-    "Place it on a perfectly clean white studio background. Add a subtle natural "
-    "drop shadow beneath the product. Keep the product 100% photorealistic — "
-    "do not illustrate, render, or alter the product itself in any way. The result "
-    "should look like a professional e-commerce studio photo."
+    "Professional e-commerce product photography. The product has already had its background removed. "
+    "Place the product on a perfectly clean, pure white seamless studio background (#FFFFFF). "
+    "Apply professional three-point studio lighting: a bright soft-box key light from the upper-left, "
+    "a fill light from the right to eliminate harsh shadows, and a subtle rim/back light to separate "
+    "the product from the background. "
+    "Add a very soft, natural ground shadow or reflection directly beneath the product to anchor it. "
+    "Enhance the product's surface details — make metals look polished and reflective, "
+    "wood grain look rich and tactile, leather look supple, and plastics look clean. "
+    "Keep the product 100% photorealistic — do NOT illustrate, cartoon, render, or alter the product "
+    "shape, text, logos, or proportions in any way. "
+    "The final result must look like a high-end professional studio photograph suitable for "
+    "Amazon, Shopify, or luxury brand product listings. "
+    "Output at the highest possible quality and sharpness."
 )
 
 app = FastAPI(title="Maslool Snap & Shine API")
@@ -54,12 +62,18 @@ def _ensure_image_file(file_bytes: bytes) -> None:
 
 
 def _remove_background(file_bytes: bytes, filename: str, api_key: str) -> bytes:
-    """Send the original upload to Remove.bg and return the cutout PNG bytes."""
+    """Send the original upload to Remove.bg and return the highest-quality cutout PNG bytes."""
     response = requests.post(
         REMOVE_BG_URL,
         headers={"X-Api-Key": api_key},
         files={"image_file": (filename, file_bytes, "application/octet-stream")},
-        data={"size": "auto"},
+        data={
+            "size": "auto",
+            "type": "product",
+            "type_level": "latest",
+            "format": "png",
+            "crop": "false",
+        },
         timeout=90,
     )
 
@@ -71,7 +85,7 @@ def _remove_background(file_bytes: bytes, filename: str, api_key: str) -> bytes:
 
 
 def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
-    """Send the cutout image to the OpenAI image edit API and return a base64 PNG string."""
+    """Send the cutout image to the OpenAI gpt-image-1 edit API at highest quality and return base64 PNG."""
     response = requests.post(
         OPENAI_IMAGE_EDIT_URL,
         headers={"Authorization": "Bearer " + api_key},
@@ -80,9 +94,10 @@ def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
             "model": "gpt-image-1",
             "prompt": ENHANCEMENT_PROMPT,
             "size": "1024x1024",
-            "response_format": "b64_json",
+            "quality": "high",
         },
-        timeout=120,
+        # High-quality gpt-image-1 edits can take longer than the default timeout.
+        timeout=180,
     )
 
     if response.status_code != 200:
@@ -118,7 +133,7 @@ def read_root() -> Dict[str, str]:
 
 @app.post("/enhance")
 async def enhance(file: UploadFile = File(...)) -> Dict[str, str]:
-    """Remove the background and enhance the product image, then return base64 JSON."""
+    """Remove the background and enhance the product image at highest quality, then return base64 JSON."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Please upload an image file.")
 
