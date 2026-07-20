@@ -6,8 +6,8 @@ Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets y
 
 ```text
 snap-maslool-shine/
-├── backend/   # FastAPI API for image enhancement
-├── web/       # React + Vite web app
+├── backend/   # FastAPI API for single and batch image enhancement
+├── web/       # React + Vite web app for upload, processing, and results
 └── README.md  # Setup and usage guide
 ```
 
@@ -63,7 +63,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set these values in `backend/.env`:
+Set this value in `backend/.env`:
 
 ```env
 OPENAI_API_KEY=your_openai_key_here
@@ -164,12 +164,12 @@ The app will run at `http://localhost:3000`.
 
 ## Cost estimate per image
 
-Estimated costs vary by current vendor pricing, resolution, and your subscription tier, but a reasonable starting estimate is:
+## Cost estimate per image
 
 - OpenAI GPT-image-1 edit: roughly **$0.03-$0.10** per image depending on image size and pricing changes
 - Multiply by the number of images in a batch to estimate total run cost.
 
-Always verify the latest pricing on the official provider pages before launch.
+Always verify the latest pricing on the official provider page before launch.
 
 ## Notes
 

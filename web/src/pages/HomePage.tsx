@@ -210,6 +210,7 @@ export function HomePage() {
           >
             Choose Photos
           </button>
+          <p className="helper-text">JPEG, PNG, WEBP, GIF, BMP, and TIFF images are supported.</p>
         </div>
 
         <input

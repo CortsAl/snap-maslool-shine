@@ -11,6 +11,7 @@
   --error: #ff9b8f;
   --radius-lg: 24px;
   --radius-md: 18px;
+  --radius-sm: 14px;
 }
 
 * {
@@ -31,6 +32,13 @@ body {
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
 img {
   display: block;
   max-width: 100%;
@@ -46,7 +54,7 @@ select {
 .page-shell {
   width: min(100%, 1120px);
   margin: 0 auto;
-  padding: 24px;
+  padding: 24px 24px 48px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -58,6 +66,13 @@ select {
   border-radius: var(--radius-lg);
   padding: 20px;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.22);
+}
+
+.hero-card,
+.summary-card,
+.status-card,
+.actions-card {
+  width: 100%;
 }
 
 .hero-card {
@@ -75,14 +90,14 @@ select {
 
 .title {
   margin: 12px 0;
-  font-size: 42px;
+  font-size: clamp(38px, 5vw, 52px);
   line-height: 1.1;
 }
 
 .subtitle {
   margin: 0;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .centered {
@@ -91,7 +106,7 @@ select {
 
 .drop-zone {
   margin-top: 24px;
-  border: 1px dashed var(--border);
+  border: 2px dashed var(--border);
   border-radius: var(--radius-md);
   padding: 28px;
   text-align: center;
@@ -102,6 +117,7 @@ select {
     transform 0.2s ease;
 }
 
+.drop-zone:hover,
 .drop-zone-active {
   border-color: var(--accent);
   background: rgba(244, 197, 66, 0.08);
@@ -122,7 +138,12 @@ select {
 }
 
 .drop-zone-or {
-  margin-bottom: 16px;
+  margin: 12px 0 16px;
+}
+
+.helper-text {
+  margin-top: 14px;
+  font-size: 14px;
 }
 
 .hidden-input {
@@ -185,7 +206,74 @@ select {
 
 .status-title {
   margin: 0;
-  font-size: 28px;
+  font-size: clamp(26px, 4vw, 34px);
+}
+
+.progress-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: #121218;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #ffe08a);
+  transition: width 0.2s ease;
+}
+
+.status-summary-row,
+.result-card-actions,
+.action-row {
+  flex-wrap: wrap;
+}
+
+.status-pending {
+  background: rgba(112, 183, 255, 0.14);
+  color: var(--info);
+}
+
+.status-processing {
+  background: rgba(244, 197, 66, 0.14);
+  color: var(--accent);
+}
+
+.status-done {
+  background: rgba(70, 210, 139, 0.14);
+  color: var(--success);
+}
+
+.status-failed {
+  background: rgba(240, 113, 120, 0.14);
+  color: var(--error);
+}
+
+.preview-frame {
+  position: relative;
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.image-stage-label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15, 15, 18, 0.75);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .progress-bar-shell {
@@ -383,6 +471,15 @@ select {
   background: transparent;
   border: 1px solid var(--accent);
   color: var(--accent);
+}
+
+.small-button {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.toggle-button {
+  margin-top: auto;
 }
 
 .full-width {

@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import io
+import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,7 +13,6 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
-# Load local environment variables from a .env file during development.
 load_dotenv()
 
 OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits"
@@ -32,9 +32,10 @@ ENHANCEMENT_PROMPT = (
     "No artificial glow, no unrealistic reflections, no plastic or rendered look."
 )
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Maslool Snap & Shine API")
 
-# Allow the web app to call the API during local development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,7 +46,6 @@ app.add_middleware(
 
 
 def _require_env(name: str) -> str:
-    """Fail fast with a clear server error when a required API key is missing."""
     value = os.getenv(name)
     if not value:
         raise HTTPException(status_code=500, detail=f"Missing required environment variable: {name}")
@@ -53,7 +53,6 @@ def _require_env(name: str) -> str:
 
 
 def _ensure_image_file(file_bytes: bytes) -> None:
-    """Validate that the uploaded bytes are a readable image before calling external APIs."""
     try:
         with Image.open(io.BytesIO(file_bytes)) as image:
             image.verify()
@@ -113,11 +112,14 @@ async def _read_upload(file: UploadFile) -> Tuple[str, str, bytes]:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Please upload an image file.")
 
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
 
-    _ensure_image_file(file_bytes)
+@app.post("/enhance-batch")
+async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
+    """Enhance up to the configured maximum number of product images in parallel."""
+    if not files:
+        raise HTTPException(status_code=400, detail="Please upload at least one image file.")
+    if len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_BATCH_SIZE} images per batch.")
 
     return file.filename, file.content_type or "application/octet-stream", file_bytes
 
