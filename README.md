@@ -1,47 +1,45 @@
 # Maslool Snap & Shine
 
-Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload a raw product image, then the FastAPI backend removes the background with Remove.bg and sends the cutout to OpenAI for a polished white-background studio result.
+Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload 1 to 100 raw product images, then the FastAPI backend sends them directly to OpenAI for natural, realistic white-background studio results.
 
 ## Monorepo layout
 
 ```text
 snap-maslool-shine/
-├── backend/   # FastAPI API for image enhancement
-├── web/       # React + Vite web app
+├── backend/   # FastAPI API for single and batch image enhancement
+├── web/       # React + Vite web app for upload, processing, and results
 └── README.md  # Setup and usage guide
 ```
 
 ## Architecture
 
 ```text
-+-----------------------+
-|  React + Vite web app |
-|  - upload/drag-drop   |
-|  - processing UI      |
-|  - download result    |
-+-----------+-----------+
-            |
-            | POST /enhance (multipart image)
-            v
-+-----------+-----------+
-|  FastAPI backend      |
-|  - validates upload   |
-|  - calls Remove.bg    |
-|  - calls OpenAI edit  |
-+-----------+-----------+
-            |
-            +--> Remove.bg API
-            |
-            +--> OpenAI GPT-image-1 API
++--------------------------+
+|  React + Vite web app    |
+|  - multi-photo upload    |
+|  - batch processing UI   |
+|  - gallery + ZIP export  |
++------------+-------------+
+             |
+             | POST /enhance or /enhance-batch
+             v
++------------+-------------+
+|  FastAPI backend         |
+|  - validates uploads     |
+|  - calls OpenAI edits    |
+|  - returns base64 images |
++------------+-------------+
+             |
+             +--> OpenAI GPT-image-1 API
 ```
 
 ## What it does
 
-1. Accepts a product photo from the web app.
-2. Removes the background with Remove.bg.
-3. Sends the cutout to OpenAI `gpt-image-1` with a photorealistic studio-photo prompt.
-4. Returns the final enhanced image to the app as a base64 string.
-5. Lets the user download the final result from the browser.
+1. Accepts 1 to 100 product photos from the web app at once.
+2. Sends all photos directly to OpenAI `gpt-image-1` with a natural, realistic studio-photo prompt.
+3. Processes images in parallel through the batch API.
+4. Shows results in a gallery with before/after toggles for each photo.
+5. Lets the user download individual enhanced images or all successful results as a ZIP file.
 
 ## Backend setup (`/backend`)
 
@@ -65,11 +63,10 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set these values in `backend/.env`:
+Set this value in `backend/.env`:
 
 ```env
 OPENAI_API_KEY=your_openai_key_here
-REMOVE_BG_API_KEY=your_removebg_key_here
 ```
 
 ### 4. Run the FastAPI server
@@ -114,7 +111,6 @@ The app will run at `http://localhost:3000`.
 
 ## API keys
 
-- Remove.bg API key: https://www.remove.bg/api
 - OpenAI API key: https://platform.openai.com/api-keys
 
 ## Environment variable reference
@@ -122,7 +118,6 @@ The app will run at `http://localhost:3000`.
 | Variable | Required | Description |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Yes | Used by the backend to call OpenAI image edit APIs. |
-| `REMOVE_BG_API_KEY` | Yes | Used by the backend to remove the original background before enhancement. |
 
 ## API contract
 
@@ -138,15 +133,40 @@ The app will run at `http://localhost:3000`.
 }
 ```
 
+### `POST /enhance-batch`
+
+- Content type: `multipart/form-data`
+- Field: `files` (repeat once per uploaded image)
+- Maximum files: `100`
+- Success response:
+
+```json
+{
+  "total": 2,
+  "succeeded": 2,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "filename": "photo-1.jpg",
+      "success": true,
+      "image": "<base64>"
+    },
+    {
+      "index": 1,
+      "filename": "photo-2.jpg",
+      "success": true,
+      "image": "<base64>"
+    }
+  ]
+}
+```
+
 ## Cost estimate per image
 
-Estimated costs vary by current vendor pricing, resolution, and your subscription tier, but a reasonable starting estimate is:
+Estimated costs vary by current OpenAI pricing, resolution, and your subscription tier, but a reasonable starting estimate is roughly **$0.03-$0.10 per image** depending on image size and pricing changes.
 
-- Remove.bg: about **$0.02-$0.20** per image depending on plan volume
-- OpenAI GPT-image-1 edit: roughly **$0.03-$0.10** per image depending on image size and pricing changes
-- Combined estimate: **~$0.05-$0.30 per enhanced image**
-
-Always verify the latest pricing on the official provider pages before launch.
+Always verify the latest pricing on the official provider page before launch.
 
 ## Notes
 

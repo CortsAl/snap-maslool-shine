@@ -1,17 +1,57 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const MAX_FILES = 100;
+
+function fileKey(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
 
 export function HomePage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
 
-  const handleFile = (file: File | null) => {
-    if (!file) {
+  const previews = useMemo(
+    () => selectedFiles.map((file) => ({ file, key: fileKey(file), previewUrl: URL.createObjectURL(file) })),
+    [selectedFiles],
+  );
+
+  useEffect(() => {
+    return () => {
+      previews.forEach((preview) => {
+        URL.revokeObjectURL(preview.previewUrl);
+      });
+    };
+  }, [previews]);
+
+  const addFiles = (incomingFiles: FileList | File[] | null) => {
+    const nextFiles = Array.from(incomingFiles ?? []).filter((file) => file.type.startsWith('image/'));
+
+    if (!nextFiles.length) {
+      setSelectionMessage('Please choose image files only.');
       return;
     }
 
-    navigate('/processing', { state: { imageFile: file } });
+    setSelectedFiles((currentFiles) => {
+      const mergedFiles = [...currentFiles];
+
+      nextFiles.forEach((file) => {
+        if (!mergedFiles.some((existingFile) => fileKey(existingFile) === fileKey(file))) {
+          mergedFiles.push(file);
+        }
+      });
+
+      if (mergedFiles.length > MAX_FILES) {
+        setSelectionMessage(`You can select up to ${MAX_FILES} photos at once.`);
+        return mergedFiles.slice(0, MAX_FILES);
+      }
+
+      setSelectionMessage(null);
+      return mergedFiles;
+    });
   };
 
   return (
@@ -20,8 +60,7 @@ export function HomePage() {
         <p className="eyebrow">Maslool Snap &amp; Shine</p>
         <h1 className="title">Snap &amp; Shine</h1>
         <p className="subtitle">
-          Upload your product photo and we will remove the background, refine the lighting, and return a clean
-          studio-style image.
+          Upload 1 to 100 product photos and let OpenAI create natural, realistic studio-quality images in one batch.
         </p>
 
         <div
@@ -34,10 +73,10 @@ export function HomePage() {
           onDrop={(event) => {
             event.preventDefault();
             setIsDragging(false);
-            handleFile(event.dataTransfer.files?.[0] ?? null);
+            addFiles(event.dataTransfer.files);
           }}
         >
-          <p className="drop-zone-text">Drag &amp; drop a photo here</p>
+          <p className="drop-zone-text">Drag &amp; drop up to 100 photos here</p>
           <p className="drop-zone-or">or</p>
           <button
             type="button"
@@ -46,21 +85,69 @@ export function HomePage() {
               fileInputRef.current?.click();
             }}
           >
-            Choose Photo
+            Choose Photos
           </button>
+          <p className="helper-text">JPEG, PNG, WEBP, and other browser-supported image files are accepted.</p>
         </div>
 
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          capture="environment"
+          multiple
           className="hidden-input"
           onChange={(event) => {
-            handleFile(event.target.files?.[0] ?? null);
+            addFiles(event.target.files);
             event.target.value = '';
           }}
         />
+
+        <div className="selection-toolbar">
+          <span className="selection-badge">
+            {selectedFiles.length} photo{selectedFiles.length === 1 ? '' : 's'} selected
+          </span>
+          {selectedFiles.length > 0 ? (
+            <button type="button" className="secondary-button small-button" onClick={() => setSelectedFiles([])}>
+              Clear All
+            </button>
+          ) : null}
+        </div>
+
+        {selectionMessage ? <p className="error-text">{selectionMessage}</p> : null}
+
+        {previews.length > 0 ? (
+          <section className="thumbnail-grid" aria-label="Selected photos">
+            {previews.map((preview) => (
+              <article key={preview.key} className="card thumbnail-card">
+                <img src={preview.previewUrl} alt={preview.file.name} className="thumbnail-image" />
+                <div className="thumbnail-meta">
+                  <p className="file-name">{preview.file.name}</p>
+                  <button
+                    type="button"
+                    className="remove-button"
+                    aria-label={`Remove ${preview.file.name}`}
+                    onClick={() => {
+                      setSelectedFiles((currentFiles) => currentFiles.filter((file) => fileKey(file) !== preview.key));
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              </article>
+            ))}
+          </section>
+        ) : null}
+
+        <div className="action-row">
+          <button
+            type="button"
+            className="primary-button full-width"
+            disabled={selectedFiles.length === 0}
+            onClick={() => navigate('/processing', { state: { imageFiles: selectedFiles } })}
+          >
+            Enhance All Photos
+          </button>
+        </div>
       </section>
     </main>
   );

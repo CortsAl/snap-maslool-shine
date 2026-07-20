@@ -1,9 +1,10 @@
 """FastAPI entry point for the Snap & Shine image enhancement service."""
 
+import asyncio
 import base64
 import io
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -11,30 +12,31 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
-# Load local environment variables from a .env file during development.
 load_dotenv()
 
-REMOVE_BG_URL = "https://api.remove.bg/v1.0/removebg"
 OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits"
+
 ENHANCEMENT_PROMPT = (
-    "Professional e-commerce product photography. The product has already had its background removed. "
-    "Place the product on a perfectly clean, pure white seamless studio background (#FFFFFF). "
-    "Apply professional three-point studio lighting: a bright soft-box key light from the upper-left, "
-    "a fill light from the right to eliminate harsh shadows, and a subtle rim/back light to separate "
-    "the product from the background. "
-    "Add a very soft, natural ground shadow or reflection directly beneath the product to anchor it. "
-    "Enhance the product's surface details — make metals look polished and reflective, "
-    "wood grain look rich and tactile, leather look supple, and plastics look clean. "
-    "Keep the product 100% photorealistic — do NOT illustrate, cartoon, render, or alter the product "
-    "shape, text, logos, or proportions in any way. "
-    "The final result must look like a high-end professional studio photograph suitable for "
-    "Amazon, Shopify, or luxury brand product listings. "
-    "Output at the highest possible quality and sharpness."
+    "You are a professional product photographer. Transform this product photo into a premium "
+    "studio-quality image that looks like it was shot by an experienced photographer in a "
+    "professional photography studio. "
+    "Requirements: "
+    "- Place the product on a pure white seamless studio background. "
+    "- Apply natural, professional studio lighting: soft key light from upper-left, gentle fill "
+    "light from the right, subtle rim light to give depth. Lighting must look real and natural. "
+    "- Add a very soft, barely visible natural shadow or ground reflection beneath the product "
+    "to make it look grounded, not floating. "
+    "- Keep ALL product details exactly as they are: every scratch, texture, engraving, logo, "
+    "text, color, and material must remain 100% faithful to the original. "
+    "- Do NOT over-process, over-sharpen, or make it look like an AI rendering or CGI. "
+    "- The result must look like a real photograph taken by a skilled human photographer — "
+    "natural, detailed, tactile, and trustworthy. "
+    "- Suitable for premium e-commerce listings on Amazon, Shopify, or luxury brand websites. "
+    "- No artificial glow, no unrealistic reflections, no plastic or rendered look."
 )
 
 app = FastAPI(title="Maslool Snap & Shine API")
 
-# Allow the web app to call the API during local development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,7 +47,6 @@ app.add_middleware(
 
 
 def _require_env(name: str) -> str:
-    """Fail fast with a clear server error when a required API key is missing."""
     value = os.getenv(name)
     if not value:
         raise HTTPException(status_code=500, detail=f"Missing required environment variable: {name}")
@@ -53,7 +54,6 @@ def _require_env(name: str) -> str:
 
 
 def _ensure_image_file(file_bytes: bytes) -> None:
-    """Validate that the uploaded bytes are a readable image before calling external APIs."""
     try:
         with Image.open(io.BytesIO(file_bytes)) as image:
             image.verify()
@@ -61,44 +61,36 @@ def _ensure_image_file(file_bytes: bytes) -> None:
         raise HTTPException(status_code=400, detail="Please upload a valid image file.") from exc
 
 
-def _remove_background(file_bytes: bytes, filename: str, api_key: str) -> bytes:
-    """Send the original upload to Remove.bg and return the highest-quality cutout PNG bytes."""
-    response = requests.post(
-        REMOVE_BG_URL,
-        headers={"X-Api-Key": api_key},
-        files={"image_file": (filename, file_bytes, "application/octet-stream")},
-        data={
-            "size": "auto",
-            "type": "product",
-            "type_level": "latest",
-            "format": "png",
-            "crop": "false",
-        },
-        timeout=90,
-    )
+async def _read_upload(file: UploadFile) -> Tuple[bytes, str, str]:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Please upload an image file.")
 
-    if response.status_code != 200:
-        message = response.text or "Remove.bg could not process the image."
-        raise HTTPException(status_code=502, detail=f"Background removal failed: {message}")
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail=f"File {file.filename} is empty.")
 
-    return response.content
+    _ensure_image_file(file_bytes)
+    content_type = file.content_type if file.content_type and file.content_type.startswith("image/") else "image/png"
+    return file_bytes, file.filename, content_type
 
 
-def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
-    """Send the cutout image to the OpenAI gpt-image-1 edit API at highest quality and return base64 PNG."""
-    response = requests.post(
-        OPENAI_IMAGE_EDIT_URL,
-        headers={"Authorization": "Bearer " + api_key},
-        files={"image": ("product-cutout.png", cutout_bytes, "image/png")},
-        data={
-            "model": "gpt-image-1",
-            "prompt": ENHANCEMENT_PROMPT,
-            "size": "1024x1024",
-            "quality": "high",
-        },
-        # High-quality gpt-image-1 edits can take longer than the default timeout.
-        timeout=180,
-    )
+def _enhance_image(file_bytes: bytes, filename: str, content_type: str, api_key: str) -> str:
+    """Send the original photo directly to OpenAI gpt-image-1 for professional enhancement."""
+    try:
+        response = requests.post(
+            OPENAI_IMAGE_EDIT_URL,
+            headers={"Authorization": "Bearer " + api_key},
+            files={"image": (filename, file_bytes, content_type)},
+            data={
+                "model": "gpt-image-1",
+                "prompt": ENHANCEMENT_PROMPT,
+                "size": "1024x1024",
+                "quality": "high",
+            },
+            timeout=180,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="Image enhancement failed: could not reach OpenAI.") from exc
 
     if response.status_code != 200:
         message = response.text or "OpenAI could not enhance the image."
@@ -118,7 +110,11 @@ def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
     if not image_url:
         raise HTTPException(status_code=502, detail="OpenAI response did not include image data.")
 
-    download_response = requests.get(image_url, timeout=120)
+    try:
+        download_response = requests.get(image_url, timeout=120)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="Failed to download the enhanced image from OpenAI.") from exc
+
     if download_response.status_code != 200:
         raise HTTPException(status_code=502, detail="Failed to download the enhanced image from OpenAI.")
 
@@ -127,26 +123,49 @@ def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
 
 @app.get("/")
 def read_root() -> Dict[str, str]:
-    """Expose a tiny health-style route so local setup is easy to verify."""
     return {"status": "ok", "service": "Maslool Snap & Shine API"}
 
 
 @app.post("/enhance")
 async def enhance(file: UploadFile = File(...)) -> Dict[str, str]:
-    """Remove the background and enhance the product image at highest quality, then return base64 JSON."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Please upload an image file.")
-
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
-
-    _ensure_image_file(file_bytes)
-
-    remove_bg_api_key = _require_env("REMOVE_BG_API_KEY")
+    """Enhance a single product image."""
+    file_bytes, filename, content_type = await _read_upload(file)
     openai_api_key = _require_env("OPENAI_API_KEY")
-
-    cutout_bytes = _remove_background(file_bytes, file.filename, remove_bg_api_key)
-    enhanced_base64 = _edit_image(cutout_bytes, openai_api_key)
-
+    enhanced_base64 = _enhance_image(file_bytes, filename, content_type, openai_api_key)
     return {"image": enhanced_base64}
+
+
+@app.post("/enhance-batch")
+async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
+    """Enhance up to 100 product images in parallel."""
+    if not files:
+        raise HTTPException(status_code=400, detail="Please upload at least one image file.")
+    if len(files) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 images per batch.")
+
+    openai_api_key = _require_env("OPENAI_API_KEY")
+    file_data = []
+
+    for upload in files:
+        file_bytes, filename, content_type = await _read_upload(upload)
+        file_data.append((file_bytes, filename, content_type))
+
+    async def process_one(file_bytes: bytes, filename: str, content_type: str, index: int) -> Dict[str, Any]:
+        try:
+            enhanced = await asyncio.to_thread(_enhance_image, file_bytes, filename, content_type, openai_api_key)
+            return {"index": index, "filename": filename, "success": True, "image": enhanced}
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else "Image enhancement failed."
+            return {"index": index, "filename": filename, "success": False, "error": detail}
+        except Exception as exc:  # pragma: no cover - defensive fallback for unexpected runtime errors
+            return {"index": index, "filename": filename, "success": False, "error": str(exc)}
+
+    tasks = [process_one(file_bytes, filename, content_type, index) for index, (file_bytes, filename, content_type) in enumerate(file_data)]
+    results = await asyncio.gather(*tasks)
+
+    return {
+        "total": len(results),
+        "succeeded": sum(1 for result in results if result["success"]),
+        "failed": sum(1 for result in results if not result["success"]),
+        "results": results,
+    }
