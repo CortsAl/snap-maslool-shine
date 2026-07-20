@@ -1,6 +1,6 @@
 # Maslool Snap & Shine
 
-Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload a raw product image, then the FastAPI backend removes the background with Remove.bg and sends the cutout to OpenAI for a polished white-background studio result.
+Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload up to 100 raw product images at once, then the FastAPI backend sends them directly to OpenAI for polished, natural-looking white-background studio results.
 
 ## Monorepo layout
 
@@ -16,32 +16,30 @@ snap-maslool-shine/
 ```text
 +-----------------------+
 |  React + Vite web app |
-|  - upload/drag-drop   |
-|  - processing UI      |
-|  - download result    |
+|  - multi-photo upload |
+|  - batch progress UI  |
+|  - result gallery     |
 +-----------+-----------+
             |
-            | POST /enhance (multipart image)
+            | POST /enhance or /enhance-batch
             v
 +-----------+-----------+
 |  FastAPI backend      |
 |  - validates upload   |
-|  - calls Remove.bg    |
 |  - calls OpenAI edit  |
+|  - runs batch tasks   |
 +-----------+-----------+
-            |
-            +--> Remove.bg API
             |
             +--> OpenAI GPT-image-1 API
 ```
 
 ## What it does
 
-1. Accepts a product photo from the web app.
-2. Removes the background with Remove.bg.
-3. Sends the cutout to OpenAI `gpt-image-1` with a photorealistic studio-photo prompt.
-4. Returns the final enhanced image to the app as a base64 string.
-5. Lets the user download the final result from the browser.
+1. Accepts one or more product photos from the web app.
+2. Sends each original upload directly to OpenAI `gpt-image-1` with a natural, photorealistic studio-photo prompt.
+3. Processes batches of up to 100 images in parallel on the backend.
+4. Returns the final enhanced images to the app as base64 strings.
+5. Lets the user review before/after comparisons and download individual PNGs or a ZIP of all successful results.
 
 ## Backend setup (`/backend`)
 
@@ -69,7 +67,6 @@ Set these values in `backend/.env`:
 
 ```env
 OPENAI_API_KEY=your_openai_key_here
-REMOVE_BG_API_KEY=your_removebg_key_here
 ```
 
 ### 4. Run the FastAPI server
@@ -114,7 +111,6 @@ The app will run at `http://localhost:3000`.
 
 ## API keys
 
-- Remove.bg API key: https://www.remove.bg/api
 - OpenAI API key: https://platform.openai.com/api-keys
 
 ## Environment variable reference
@@ -122,7 +118,6 @@ The app will run at `http://localhost:3000`.
 | Variable | Required | Description |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Yes | Used by the backend to call OpenAI image edit APIs. |
-| `REMOVE_BG_API_KEY` | Yes | Used by the backend to remove the original background before enhancement. |
 
 ## API contract
 
@@ -138,18 +133,47 @@ The app will run at `http://localhost:3000`.
 }
 ```
 
+### `POST /enhance-batch`
+
+- Content type: `multipart/form-data`
+- Field: `files` (repeat the field for each image)
+- Maximum files: `100`
+- Success response:
+
+```json
+{
+  "total": 2,
+  "succeeded": 1,
+  "failed": 1,
+  "results": [
+    {
+      "index": 0,
+      "filename": "knife-1.jpg",
+      "success": true,
+      "image": "<base64>"
+    },
+    {
+      "index": 1,
+      "filename": "knife-2.jpg",
+      "success": false,
+      "error": "Please upload a valid image file."
+    }
+  ]
+}
+```
+
 ## Cost estimate per image
 
 Estimated costs vary by current vendor pricing, resolution, and your subscription tier, but a reasonable starting estimate is:
 
-- Remove.bg: about **$0.02-$0.20** per image depending on plan volume
 - OpenAI GPT-image-1 edit: roughly **$0.03-$0.10** per image depending on image size and pricing changes
-- Combined estimate: **~$0.05-$0.30 per enhanced image**
+- Multiply by the number of images in a batch to estimate total run cost.
 
 Always verify the latest pricing on the official provider pages before launch.
 
 ## Notes
 
 - The web UI uses a dark theme with gold accents for a premium feel.
+- The web flow supports drag-and-drop multi-select, per-photo status badges, and ZIP downloads.
 - The backend loads environment variables with `python-dotenv`.
 - The app is scaffolded for local development first; production deployment will require updating the backend URL and tightening CORS.
