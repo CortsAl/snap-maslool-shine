@@ -23,6 +23,8 @@ type BatchEnhanceResponse = {
 
 type BatchResult = BatchApiResult & { originalUrl: string };
 
+const BATCH_REQUEST_TIMEOUT_MS = 600000;
+
 const STATUS_LABELS: Record<ProcessingStatus, string> = {
   pending: '⏳ Pending',
   processing: '🔄 Processing',
@@ -74,7 +76,7 @@ export function ProcessingPage() {
             'Content-Type': 'multipart/form-data',
           },
           signal: controller.signal,
-          timeout: 600000,
+          timeout: BATCH_REQUEST_TIMEOUT_MS,
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) {
               return;

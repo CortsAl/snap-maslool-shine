@@ -15,6 +15,7 @@ from PIL import Image, UnidentifiedImageError
 load_dotenv()
 
 OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits"
+MAX_BATCH_SIZE = 100
 
 ENHANCEMENT_PROMPT = (
     "You are a professional product photographer. Transform this product photo into a premium "
@@ -137,11 +138,11 @@ async def enhance(file: UploadFile = File(...)) -> Dict[str, str]:
 
 @app.post("/enhance-batch")
 async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
-    """Enhance up to 100 product images in parallel."""
+    """Enhance up to the configured maximum number of product images in parallel."""
     if not files:
         raise HTTPException(status_code=400, detail="Please upload at least one image file.")
-    if len(files) > 100:
-        raise HTTPException(status_code=400, detail="Maximum 100 images per batch.")
+    if len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_BATCH_SIZE} images per batch.")
 
     openai_api_key = _require_env("OPENAI_API_KEY")
     file_data = []
@@ -157,8 +158,8 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, str) else "Image enhancement failed."
             return {"index": index, "filename": filename, "success": False, "error": detail}
-        except Exception as exc:  # pragma: no cover - defensive fallback for unexpected runtime errors
-            return {"index": index, "filename": filename, "success": False, "error": str(exc)}
+        except Exception:  # pragma: no cover - defensive fallback for unexpected runtime errors
+            return {"index": index, "filename": filename, "success": False, "error": "An unexpected error occurred during image enhancement."}
 
     tasks = [process_one(file_bytes, filename, content_type, index) for index, (file_bytes, filename, content_type) in enumerate(file_data)]
     results = await asyncio.gather(*tasks)

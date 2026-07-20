@@ -29,7 +29,8 @@ function downloadBase64Image(filename: string, base64Image: string) {
 export function ResultPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const results = ((location.state as ResultState | null)?.results ?? []).filter((result): result is BatchResult => Boolean(result));
+  const state = location.state as ResultState | null;
+  const results = Array.isArray(state?.results) ? state.results : [];
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [showAfterByIndex, setShowAfterByIndex] = useState<Record<number, boolean>>(() =>
@@ -153,7 +154,11 @@ export function ResultPage() {
                   <button
                     type="button"
                     className="primary-button full-width"
-                    onClick={() => downloadBase64Image(result.filename, result.image as string)}
+                    onClick={() => {
+                      if (result.image) {
+                        downloadBase64Image(result.filename, result.image);
+                      }
+                    }}
                   >
                     ⬇️ Download
                   </button>

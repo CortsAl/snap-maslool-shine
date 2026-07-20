@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+// Keep the frontend limit aligned with the backend /enhance-batch endpoint limit.
 const MAX_FILES = 100;
+const DISALLOWED_IMAGE_TYPES = new Set(['image/svg+xml']);
+
+function isSupportedImageFile(file: File) {
+  return file.type.startsWith('image/') && !DISALLOWED_IMAGE_TYPES.has(file.type);
+}
 
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
@@ -28,10 +34,10 @@ export function HomePage() {
   }, [previews]);
 
   const addFiles = (incomingFiles: FileList | File[] | null) => {
-    const nextFiles = Array.from(incomingFiles ?? []).filter((file) => file.type.startsWith('image/'));
+    const nextFiles = Array.from(incomingFiles ?? []).filter((file) => isSupportedImageFile(file));
 
     if (!nextFiles.length) {
-      setSelectionMessage('Please choose image files only.');
+      setSelectionMessage('Please choose supported raster image files. SVG files are not supported.');
       return;
     }
 
@@ -87,7 +93,7 @@ export function HomePage() {
           >
             Choose Photos
           </button>
-          <p className="helper-text">JPEG, PNG, WEBP, and other browser-supported image files are accepted.</p>
+          <p className="helper-text">JPEG, PNG, WEBP, GIF, BMP, and TIFF images are supported. SVG files are excluded.</p>
         </div>
 
         <input
