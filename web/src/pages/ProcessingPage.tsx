@@ -1,8 +1,9 @@
 import axios from 'axios';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../constants/api';
 import type { BatchResult } from '../types/batch';
+import { getFileId } from '../utils/files';
 
 type BatchApiResult = Omit<BatchResult, 'originalUrl'>;
 type BatchEnhanceResponse = {
@@ -21,24 +22,17 @@ const STATUS_LABELS: Record<FileStatus, string> = {
   failed: 'Failed',
 };
 
-function getFileId(file: File) {
-  return `${file.name}-${file.size}-${file.lastModified}`;
-}
-
 export function ProcessingPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const imageFiles = (location.state as ProcessingState | null)?.imageFiles ?? [];
-  const previewFiles = useMemo(
-    () =>
-      imageFiles.map((file, index) => ({
-        index,
-        file,
-        id: getFileId(file),
-        url: URL.createObjectURL(file),
-      })),
-    [imageFiles],
-  );
+  const state = location.state as (ProcessingState & { previewUrls?: Record<string, string> }) | null;
+  const imageFiles = state?.imageFiles ?? [];
+  const previewFiles = imageFiles.map((file, index) => ({
+    index,
+    file,
+    id: getFileId(file),
+    url: state?.previewUrls?.[getFileId(file)] ?? '',
+  }));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attemptCount, setAttemptCount] = useState(0);
   const [overallProgress, setOverallProgress] = useState(0);
@@ -142,7 +136,9 @@ export function ProcessingPage() {
     return () => {
       if (!handedOffToResultRef.current) {
         previewFiles.forEach((previewFile) => {
-          URL.revokeObjectURL(previewFile.url);
+          if (previewFile.url) {
+            URL.revokeObjectURL(previewFile.url);
+          }
         });
       }
     };
@@ -187,7 +183,11 @@ export function ProcessingPage() {
       <section className="thumbnail-grid" aria-label="Batch processing queue">
         {previewFiles.map((previewFile) => (
           <article key={previewFile.id} className="thumbnail-card">
-            <img src={previewFile.url} alt={previewFile.file.name} className="thumbnail-image" />
+            {previewFile.url ? (
+              <img src={previewFile.url} alt={previewFile.file.name} className="thumbnail-image" />
+            ) : (
+              <div className="thumbnail-image thumbnail-placeholder" aria-label="Preparing photo preview" />
+            )}
             <div className="thumbnail-meta">
               <div className="thumbnail-header">
                 <p className="thumbnail-name">{previewFile.file.name}</p>

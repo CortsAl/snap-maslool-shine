@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MAX_IMAGE_FILES } from '../constants/uploads';
+import { getFileId } from '../utils/files';
+import { createSafePreviewUrl } from '../utils/previews';
 
 const ACCEPTED_IMAGE_TYPES = '.avif,.bmp,.gif,.heic,.heif,.jpg,.jpeg,.png,.tif,.tiff,.webp';
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i;
-
-function getFileId(file: File) {
-  return `${file.name}-${file.size}-${file.lastModified}`;
-}
 
 function isImageFile(file: File) {
   return file.type.startsWith('image/') || IMAGE_FILE_PATTERN.test(file.name);
@@ -16,27 +14,114 @@ function isImageFile(file: File) {
 export function HomePage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handedOffToProcessingRef = useRef(false);
+  const previewUrlsRef = useRef<Record<string, string>>({});
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrlsById, setPreviewUrlsById] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const previewFiles = useMemo(
-    () =>
-      selectedFiles.map((file) => ({
-        file,
-        id: getFileId(file),
-        url: URL.createObjectURL(file),
-      })),
-    [selectedFiles],
-  );
+  useEffect(() => {
+    previewUrlsRef.current = previewUrlsById;
+  }, [previewUrlsById]);
 
   useEffect(() => {
     return () => {
-      previewFiles.forEach((previewFile) => {
-        URL.revokeObjectURL(previewFile.url);
-      });
+      if (!handedOffToProcessingRef.current) {
+        Object.values(previewUrlsRef.current).forEach((previewUrl) => {
+          URL.revokeObjectURL(previewUrl);
+        });
+      }
     };
-  }, [previewFiles]);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const activeFileIds = new Set(selectedFiles.map((file) => getFileId(file)));
+
+    setPreviewUrlsById((currentPreviewUrls) => {
+      const nextPreviewUrls: Record<string, string> = {};
+
+      Object.entries(currentPreviewUrls).forEach(([fileId, previewUrl]) => {
+        if (activeFileIds.has(fileId)) {
+          nextPreviewUrls[fileId] = previewUrl;
+          return;
+        }
+
+        URL.revokeObjectURL(previewUrl);
+      });
+
+      return nextPreviewUrls;
+    });
+
+    const filesNeedingPreviews = selectedFiles.filter((file) => !previewUrlsRef.current[getFileId(file)]);
+    if (!filesNeedingPreviews.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadPreviews = async () => {
+      const previewEntries = await Promise.all(
+        filesNeedingPreviews.map(async (file) => {
+          try {
+            return {
+              fileId: getFileId(file),
+              previewUrl: await createSafePreviewUrl(file),
+            };
+          } catch {
+            return {
+              fileId: getFileId(file),
+              previewUrl: '',
+            };
+          }
+        }),
+      );
+
+      if (cancelled) {
+        previewEntries.forEach(({ previewUrl }) => {
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+          }
+        });
+        return;
+      }
+
+      setPreviewUrlsById((currentPreviewUrls) => {
+        const nextPreviewUrls = { ...currentPreviewUrls };
+
+        previewEntries.forEach(({ fileId, previewUrl }) => {
+          if (!previewUrl || nextPreviewUrls[fileId]) {
+            if (previewUrl && nextPreviewUrls[fileId] !== previewUrl) {
+              URL.revokeObjectURL(previewUrl);
+            }
+            return;
+          }
+
+          nextPreviewUrls[fileId] = previewUrl;
+        });
+
+        return nextPreviewUrls;
+      });
+
+      if (previewEntries.some(({ previewUrl }) => !previewUrl)) {
+        setErrorMessage('We could not preview one or more selected photos. Please remove them and try again.');
+      }
+    };
+
+    void loadPreviews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFiles]);
+
+  const previewFiles = selectedFiles.map((file) => ({
+    file,
+    id: getFileId(file),
+    url: previewUrlsById[getFileId(file)] ?? '',
+  }));
+  const previewsReady = selectedFiles.every((file) => Boolean(previewUrlsById[getFileId(file)]));
 
   const handleFiles = (incomingFiles: FileList | File[] | null) => {
     const files = Array.from(incomingFiles ?? []);
@@ -164,7 +249,11 @@ export function HomePage() {
                 >
                   ×
                 </button>
-                <img src={previewFile.url} alt={previewFile.file.name} className="thumbnail-image" />
+                {previewFile.url ? (
+                  <img src={previewFile.url} alt={previewFile.file.name} className="thumbnail-image" />
+                ) : (
+                  <div className="thumbnail-image thumbnail-placeholder" aria-label="Preparing photo preview" />
+                )}
                 <div className="thumbnail-meta">
                   <p className="thumbnail-name">{previewFile.file.name}</p>
                   <p className="thumbnail-caption">Photo {index + 1}</p>
@@ -177,10 +266,18 @@ export function HomePage() {
         <button
           type="button"
           className="primary-button full-width"
-          disabled={!selectedFiles.length}
-          onClick={() => navigate('/processing', { state: { imageFiles: selectedFiles } })}
+          disabled={!selectedFiles.length || !previewsReady}
+          onClick={() => {
+            handedOffToProcessingRef.current = true;
+            navigate('/processing', {
+              state: {
+                imageFiles: selectedFiles,
+                previewUrls: previewUrlsById,
+              },
+            });
+          }}
         >
-          Enhance All Photos
+          {previewsReady ? 'Enhance All Photos' : 'Preparing previews...'}
         </button>
       </section>
     </main>

@@ -177,7 +177,8 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
     if tasks:
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
         for index, task_result in zip(task_indices, task_results):
-            filename = str(results[index]["filename"]) if results[index] else f"image-{index + 1}"
+            current_result = results[index]
+            filename = str(current_result["filename"]) if current_result else f"image-{index + 1}"
             if isinstance(task_result, Exception):
                 if isinstance(task_result, HTTPException):
                     results[index] = _batch_error_result(index, filename, str(task_result.detail))

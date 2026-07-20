@@ -103,8 +103,9 @@ export function ResultPage() {
 
       <section className="result-grid" aria-label="Batch enhancement results">
         {state.results.map((result) => {
+          const enhancedImage = result.image;
           const showEnhanced = showEnhancedByIndex[result.index] ?? result.success;
-          const imageSrc = showEnhanced && result.image ? `data:image/png;base64,${result.image}` : result.originalUrl;
+          const imageSrc = showEnhanced && enhancedImage ? `data:image/png;base64,${enhancedImage}` : result.originalUrl;
 
           return (
             <article key={`${result.index}-${result.filename}`} className="card result-card">
@@ -136,11 +137,11 @@ export function ResultPage() {
                 <img src={imageSrc} alt={result.filename} className="preview-image" />
               </button>
 
-              {result.success && result.image ? (
+              {result.success && enhancedImage ? (
                 <button
                   type="button"
                   className="secondary-button full-width"
-                  onClick={() => downloadBase64Image(getDownloadName(result.filename, result.index), result.image!)}
+                  onClick={() => downloadBase64Image(getDownloadName(result.filename, result.index), enhancedImage)}
                 >
                   Download PNG
                 </button>

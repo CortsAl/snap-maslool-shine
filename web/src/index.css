@@ -164,6 +164,13 @@ select {
   background: #101014;
 }
 
+.thumbnail-placeholder {
+  border: 1px dashed var(--border);
+  background:
+    linear-gradient(135deg, rgba(244, 197, 66, 0.12), rgba(244, 197, 66, 0.02)),
+    #101014;
+}
+
 .status-card,
 .actions-card,
 .result-card {
