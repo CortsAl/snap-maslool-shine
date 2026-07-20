@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../constants/api';
 import type { BatchResult } from '../types/batch';
@@ -27,12 +27,16 @@ export function ProcessingPage() {
   const location = useLocation();
   const state = location.state as (ProcessingState & { previewUrls?: Record<string, string> }) | null;
   const imageFiles = state?.imageFiles ?? [];
-  const previewFiles = imageFiles.map((file, index) => ({
-    index,
-    file,
-    id: getFileId(file),
-    url: state?.previewUrls?.[getFileId(file)] ?? '',
-  }));
+  const previewFiles = useMemo(
+    () =>
+      imageFiles.map((file, index) => ({
+        index,
+        file,
+        id: getFileId(file),
+        url: state?.previewUrls?.[getFileId(file)] ?? '',
+      })),
+    [imageFiles, state?.previewUrls],
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attemptCount, setAttemptCount] = useState(0);
   const [overallProgress, setOverallProgress] = useState(0);

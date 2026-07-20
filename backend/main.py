@@ -4,7 +4,7 @@ import asyncio
 import base64
 import io
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -157,7 +157,7 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"You can upload up to {MAX_BATCH_FILES} images at once.")
 
     openai_api_key = _require_env("OPENAI_API_KEY")
-    results: List[Dict[str, Any] | None] = [None] * len(files)
+    results: List[Optional[Dict[str, Any]]] = [None] * len(files)
     tasks = []
     task_indices = []
 
