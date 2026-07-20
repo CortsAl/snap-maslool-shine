@@ -86,10 +86,9 @@ export function ProcessingPage() {
           },
         });
 
-        const resultLookup = new Map(response.data.results.map((result) => [result.index, result]));
         const results = previewFiles.map<BatchResult>(({ file, index, url }) => {
-          const result = resultLookup.get(index);
-          if (!result) {
+          const result = response.data.results[index];
+          if (!result || result.index !== index) {
             return {
               index,
               filename: file.name,

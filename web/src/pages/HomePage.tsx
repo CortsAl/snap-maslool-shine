@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MAX_IMAGE_FILES } from '../constants/uploads';
 
-const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|tiff?|webp)$/i;
+const ACCEPTED_IMAGE_TYPES = '.avif,.bmp,.gif,.heic,.heif,.jpg,.jpeg,.png,.tif,.tiff,.webp';
+const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i;
 
 function getFileId(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
@@ -130,7 +131,8 @@ export function HomePage() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*"
+          accept={ACCEPTED_IMAGE_TYPES}
+          capture="environment"
           className="hidden-input"
           onChange={(event) => {
             handleFiles(event.target.files);

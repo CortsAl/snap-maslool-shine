@@ -157,7 +157,7 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"You can upload up to {MAX_BATCH_FILES} images at once.")
 
     openai_api_key = _require_env("OPENAI_API_KEY")
-    results: List[Dict[str, Any]] = [_batch_error_result(index, "", "Image processing did not start.") for index in range(len(files))]
+    results: List[Dict[str, Any] | None] = [None] * len(files)
     tasks = []
     task_indices = []
 
@@ -177,7 +177,7 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
     if tasks:
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
         for index, task_result in zip(task_indices, task_results):
-            filename = str(results[index]["filename"])
+            filename = str(results[index]["filename"]) if results[index] else f"image-{index + 1}"
             if isinstance(task_result, Exception):
                 if isinstance(task_result, HTTPException):
                     results[index] = _batch_error_result(index, filename, str(task_result.detail))
@@ -192,12 +192,16 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
                 "image": task_result,
             }
 
-    succeeded = sum(1 for result in results if result.get("success"))
-    failed = len(results) - succeeded
+    finalized_results = [
+        result if result is not None else _batch_error_result(index, f"image-{index + 1}", "Image processing did not start.")
+        for index, result in enumerate(results)
+    ]
+    succeeded = sum(1 for result in finalized_results if result.get("success"))
+    failed = len(finalized_results) - succeeded
 
     return {
-        "total": len(results),
+        "total": len(finalized_results),
         "succeeded": succeeded,
         "failed": failed,
-        "results": results,
+        "results": finalized_results,
     }
