@@ -18,6 +18,7 @@ load_dotenv()
 OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits"
 # Keep the API and UI aligned on the largest batch size the product is designed to handle.
 MAX_BATCH_SIZE = 100
+MAX_CONCURRENT_ENHANCEMENTS = 10
 
 ENHANCEMENT_PROMPT = (
     "You are a professional product photographer. Transform this product photo into a premium "
@@ -79,12 +80,12 @@ async def _read_upload(file: UploadFile) -> Tuple[bytes, str, str]:
     return file_bytes, file.filename, content_type
 
 
-def _enhance_image(file_bytes: bytes, filename: str, content_type: str, api_key: str) -> str:
+def _enhance_image(file_bytes: bytes, filename: str, content_type: str, openai_api_key: str) -> str:
     """Send the original photo directly to OpenAI gpt-image-1 for professional enhancement."""
     try:
         response = requests.post(
             OPENAI_IMAGE_EDIT_URL,
-            headers={"Authorization": "Bearer " + api_key},
+            headers={"Authorization": "Bearer " + openai_api_key},
             files={"image": (filename, file_bytes, content_type)},
             data={
                 "model": "gpt-image-1",
@@ -150,26 +151,28 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
 
     openai_api_key = _require_env("OPENAI_API_KEY")
     file_data = []
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_ENHANCEMENTS)
 
     for upload in files:
         file_bytes, filename, content_type = await _read_upload(upload)
         file_data.append((file_bytes, filename, content_type))
 
     async def process_one(file_bytes: bytes, filename: str, content_type: str, index: int) -> Dict[str, Any]:
-        try:
-            enhanced = await asyncio.to_thread(_enhance_image, file_bytes, filename, content_type, openai_api_key)
-            return {"index": index, "filename": filename, "success": True, "image": enhanced}
-        except HTTPException as exc:
-            detail = exc.detail if isinstance(exc.detail, str) else "Image enhancement failed."
-            return {"index": index, "filename": filename, "success": False, "error": detail}
-        except Exception:
-            logger.exception("Unexpected batch enhancement error for %s", filename)
-            return {
-                "index": index,
-                "filename": filename,
-                "success": False,
-                "error": "An unexpected error occurred during image enhancement.",
-            }
+        async with semaphore:
+            try:
+                enhanced = await asyncio.to_thread(_enhance_image, file_bytes, filename, content_type, openai_api_key)
+                return {"index": index, "filename": filename, "success": True, "image": enhanced}
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else "Image enhancement failed."
+                return {"index": index, "filename": filename, "success": False, "error": detail}
+            except Exception:
+                logger.exception("Unexpected batch enhancement error for %s", filename)
+                return {
+                    "index": index,
+                    "filename": filename,
+                    "success": False,
+                    "error": "An unexpected error occurred during image enhancement.",
+                }
 
     tasks = [process_one(file_bytes, filename, content_type, index) for index, (file_bytes, filename, content_type) in enumerate(file_data)]
     results = await asyncio.gather(*tasks)

@@ -35,11 +35,10 @@ const STATUS_LABELS: Record<ProcessingStatus, string> = {
 };
 
 function createStatusMap(entries: Array<[number, ProcessingStatus]>) {
-  const statusMap: Record<number, ProcessingStatus> = {};
-  entries.forEach(([index, status]) => {
+  return entries.reduce<Record<number, ProcessingStatus>>((statusMap, [index, status]) => {
     statusMap[index] = status;
-  });
-  return statusMap;
+    return statusMap;
+  }, {});
 }
 
 export function ProcessingPage() {

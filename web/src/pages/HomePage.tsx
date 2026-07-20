@@ -4,14 +4,22 @@ import { sanitizeFileName } from '../utils/fileNames';
 
 // Keep the frontend limit aligned with the backend /enhance-batch endpoint limit.
 const MAX_FILES = 100;
-const DISALLOWED_IMAGE_TYPES = new Set(['image/svg+xml']);
+const ACCEPTED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/bmp',
+  'image/tiff',
+] as const;
+const ACCEPT_ATTRIBUTE = ACCEPTED_IMAGE_TYPES.join(',');
 
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
 function isSupportedImageFile(file: File) {
-  return file.type.startsWith('image/') && !DISALLOWED_IMAGE_TYPES.has(file.type);
+  return ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number]);
 }
 
 export function HomePage() {
@@ -44,7 +52,7 @@ export function HomePage() {
     const nextFiles = Array.from(incomingFiles ?? []).filter((file) => isSupportedImageFile(file));
 
     if (!nextFiles.length) {
-      setSelectionMessage('Please choose supported raster image files. SVG files are not supported.');
+      setSelectionMessage('Please choose JPEG, PNG, WEBP, GIF, BMP, or TIFF image files.');
       return;
     }
 
@@ -103,13 +111,13 @@ export function HomePage() {
           >
             Choose Photos
           </button>
-          <p className="helper-text">JPEG, PNG, WEBP, GIF, BMP, and TIFF images are supported. SVG files are excluded.</p>
+          <p className="helper-text">JPEG, PNG, WEBP, GIF, BMP, and TIFF images are supported.</p>
         </div>
 
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={ACCEPT_ATTRIBUTE}
           multiple
           className="hidden-input"
           onChange={(event) => {

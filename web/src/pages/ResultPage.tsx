@@ -16,6 +16,10 @@ type ResultState = {
   results: BatchResult[];
 };
 
+function createInitialToggleState(results: BatchResult[]) {
+  return Object.fromEntries(results.map((result) => [result.index, result.success]));
+}
+
 function downloadBase64Image(filename: string, base64Image: string) {
   const link = document.createElement('a');
   link.href = `data:image/png;base64,${base64Image}`;
@@ -30,9 +34,7 @@ export function ResultPage() {
   const results = Array.isArray(state?.results) ? state.results : [];
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  const [showAfterByIndex, setShowAfterByIndex] = useState<Record<number, boolean>>(() =>
-    Object.fromEntries(results.map((result) => [result.index, result.success])),
-  );
+  const [showAfterByIndex, setShowAfterByIndex] = useState<Record<number, boolean>>(() => createInitialToggleState(results));
 
   useEffect(() => {
     if (!results.length) {
@@ -44,10 +46,6 @@ export function ResultPage() {
         URL.revokeObjectURL(result.originalUrl);
       });
     };
-  }, [results]);
-
-  useEffect(() => {
-    setShowAfterByIndex(Object.fromEntries(results.map((result) => [result.index, result.success])));
   }, [results]);
 
   const successfulResults = useMemo(() => results.filter((result) => result.success && result.image), [results]);
@@ -82,11 +80,8 @@ export function ResultPage() {
       link.click();
       URL.revokeObjectURL(zipUrl);
     } catch (error) {
-      setDownloadError(
-        error instanceof Error
-          ? error.message
-          : 'We could not create the ZIP download. Please try downloading images individually or refresh the page.',
-      );
+      const detail = error instanceof Error ? `${error.message}. ` : '';
+      setDownloadError(`${detail}We could not create the ZIP download. Please try downloading images individually or refresh the page.`);
     } finally {
       setIsDownloadingAll(false);
     }
