@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import io
+import logging
 import os
 from typing import Any, Dict, List, Tuple
 
@@ -15,6 +16,7 @@ from PIL import Image, UnidentifiedImageError
 load_dotenv()
 
 OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits"
+# Keep the API and UI aligned on the largest batch size the product is designed to handle.
 MAX_BATCH_SIZE = 100
 
 ENHANCEMENT_PROMPT = (
@@ -35,6 +37,8 @@ ENHANCEMENT_PROMPT = (
     "- Suitable for premium e-commerce listings on Amazon, Shopify, or luxury brand websites. "
     "- No artificial glow, no unrealistic reflections, no plastic or rendered look."
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Maslool Snap & Shine API")
 
@@ -158,8 +162,14 @@ async def enhance_batch(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, str) else "Image enhancement failed."
             return {"index": index, "filename": filename, "success": False, "error": detail}
-        except Exception:  # pragma: no cover - defensive fallback for unexpected runtime errors
-            return {"index": index, "filename": filename, "success": False, "error": "An unexpected error occurred during image enhancement."}
+        except Exception:
+            logger.exception("Unexpected batch enhancement error for %s", filename)
+            return {
+                "index": index,
+                "filename": filename,
+                "success": False,
+                "error": "An unexpected error occurred during image enhancement.",
+            }
 
     tasks = [process_one(file_bytes, filename, content_type, index) for index, (file_bytes, filename, content_type) in enumerate(file_data)]
     results = await asyncio.gather(*tasks)

@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { sanitizeFileName, toPngFilename } from '../utils/fileNames';
 
 type BatchResult = {
   index: number;
@@ -14,10 +15,6 @@ type BatchResult = {
 type ResultState = {
   results: BatchResult[];
 };
-
-function toPngFilename(filename: string) {
-  return filename.replace(/\.[^./]+$/, '') + '.png';
-}
 
 function downloadBase64Image(filename: string, base64Image: string) {
   const link = document.createElement('a');
@@ -85,7 +82,11 @@ export function ResultPage() {
       link.click();
       URL.revokeObjectURL(zipUrl);
     } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : 'We could not create the ZIP download.');
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : 'We could not create the ZIP download. Please try downloading images individually or refresh the page.',
+      );
     } finally {
       setIsDownloadingAll(false);
     }
@@ -118,13 +119,14 @@ export function ResultPage() {
 
       <section className="result-grid" aria-label="Enhanced photos">
         {results.map((result) => {
+          const safeFileName = sanitizeFileName(result.filename);
           const showAfter = Boolean(showAfterByIndex[result.index] && result.success && result.image);
           const imageSrc = showAfter && result.image ? `data:image/png;base64,${result.image}` : result.originalUrl;
 
           return (
             <article key={`${result.index}-${result.filename}`} className="card result-card">
               <div className="result-card-header">
-                <p className="file-name">{result.filename}</p>
+                <p className="file-name">{safeFileName}</p>
                 <span className={`status-badge status-${result.success ? 'done' : 'failed'}`}>
                   {result.success ? '✅ Done' : '❌ Failed'}
                 </span>
@@ -132,7 +134,7 @@ export function ResultPage() {
 
               <div className="preview-frame">
                 <p className="image-stage-label">{showAfter ? 'After' : 'Before'}</p>
-                <img src={imageSrc} alt={result.filename} className="preview-image" />
+                <img src={imageSrc} alt={safeFileName} className="preview-image" />
               </div>
 
               {result.success && result.image ? (

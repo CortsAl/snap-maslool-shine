@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../constants/api';
+import { sanitizeFileName } from '../utils/fileNames';
 
 type ProcessingState = { imageFiles: File[] };
 type ProcessingStatus = 'pending' | 'processing' | 'done' | 'failed';
@@ -23,7 +24,8 @@ type BatchEnhanceResponse = {
 
 type BatchResult = BatchApiResult & { originalUrl: string };
 
-const BATCH_REQUEST_TIMEOUT_MS = 600000;
+// Allow time for the largest supported batch to upload and finish server-side enhancement.
+const TEN_MINUTES_MS = 600000;
 
 const STATUS_LABELS: Record<ProcessingStatus, string> = {
   pending: '⏳ Pending',
@@ -32,24 +34,38 @@ const STATUS_LABELS: Record<ProcessingStatus, string> = {
   failed: '❌ Failed',
 };
 
+function createStatusMap(entries: Array<[number, ProcessingStatus]>) {
+  const statusMap: Record<number, ProcessingStatus> = {};
+  entries.forEach(([index, status]) => {
+    statusMap[index] = status;
+  });
+  return statusMap;
+}
+
 export function ProcessingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const imageFiles = (location.state as ProcessingState | null)?.imageFiles ?? [];
   const previews = useMemo(
-    () => imageFiles.map((file, index) => ({ index, filename: file.name, originalUrl: URL.createObjectURL(file) })),
+    () =>
+      imageFiles.map((file, index) => ({
+        index,
+        filename: file.name,
+        displayName: sanitizeFileName(file.name),
+        originalUrl: URL.createObjectURL(file),
+      })),
     [imageFiles],
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attemptCount, setAttemptCount] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [statuses, setStatuses] = useState<Record<number, ProcessingStatus>>(() =>
-    Object.fromEntries(imageFiles.map((_, index) => [index, 'pending'])),
+    createStatusMap(imageFiles.map((_, index) => [index, 'pending'])),
   );
   const handedOffToResultRef = useRef(false);
 
   useEffect(() => {
-    setStatuses(Object.fromEntries(imageFiles.map((_, index) => [index, 'pending'])));
+    setStatuses(createStatusMap(imageFiles.map((_, index) => [index, 'pending'])));
   }, [imageFiles]);
 
   useEffect(() => {
@@ -62,7 +78,7 @@ export function ProcessingPage() {
     const enhanceImages = async () => {
       setErrorMessage(null);
       setUploadProgress(0);
-      setStatuses(Object.fromEntries(previews.map((preview) => [preview.index, 'processing'])));
+      setStatuses(createStatusMap(previews.map((preview) => [preview.index, 'processing'])));
 
       try {
         const formData = new FormData();
@@ -76,7 +92,7 @@ export function ProcessingPage() {
             'Content-Type': 'multipart/form-data',
           },
           signal: controller.signal,
-          timeout: BATCH_REQUEST_TIMEOUT_MS,
+          timeout: TEN_MINUTES_MS,
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) {
               return;
@@ -105,12 +121,7 @@ export function ProcessingPage() {
           };
         });
 
-        setStatuses(
-          Object.fromEntries(nextResults.map((result) => [result.index, result.success ? 'done' : 'failed'])) as Record<
-            number,
-            ProcessingStatus
-          >,
-        );
+        setStatuses(createStatusMap(nextResults.map((result) => [result.index, result.success ? 'done' : 'failed'])));
 
         handedOffToResultRef.current = true;
         navigate('/result', {
@@ -122,7 +133,7 @@ export function ProcessingPage() {
           return;
         }
 
-        setStatuses(Object.fromEntries(previews.map((preview) => [preview.index, 'failed'])));
+        setStatuses(createStatusMap(previews.map((preview) => [preview.index, 'failed'])));
 
         if (axios.isAxiosError(error)) {
           const detail = error.response?.data?.detail;
@@ -205,9 +216,9 @@ export function ProcessingPage() {
           const status = statuses[preview.index] ?? 'pending';
           return (
             <article key={`${preview.index}-${preview.filename}`} className="card batch-card">
-              <img src={preview.originalUrl} alt={preview.filename} className="thumbnail-image" />
+              <img src={preview.originalUrl} alt={preview.displayName} className="thumbnail-image" />
               <div className="batch-card-footer">
-                <p className="file-name">{preview.filename}</p>
+                <p className="file-name">{preview.displayName}</p>
                 <span className={`status-badge status-${status}`}>{STATUS_LABELS[status]}</span>
               </div>
             </article>

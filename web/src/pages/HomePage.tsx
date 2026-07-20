@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { sanitizeFileName } from '../utils/fileNames';
 
 // Keep the frontend limit aligned with the backend /enhance-batch endpoint limit.
 const MAX_FILES = 100;
 const DISALLOWED_IMAGE_TYPES = new Set(['image/svg+xml']);
 
-function isSupportedImageFile(file: File) {
-  return file.type.startsWith('image/') && !DISALLOWED_IMAGE_TYPES.has(file.type);
-}
-
 function fileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function isSupportedImageFile(file: File) {
+  return file.type.startsWith('image/') && !DISALLOWED_IMAGE_TYPES.has(file.type);
 }
 
 export function HomePage() {
@@ -21,7 +22,13 @@ export function HomePage() {
   const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
 
   const previews = useMemo(
-    () => selectedFiles.map((file) => ({ file, key: fileKey(file), previewUrl: URL.createObjectURL(file) })),
+    () =>
+      selectedFiles.map((file) => ({
+        file,
+        key: fileKey(file),
+        displayName: sanitizeFileName(file.name),
+        previewUrl: URL.createObjectURL(file),
+      })),
     [selectedFiles],
   );
 
@@ -43,10 +50,13 @@ export function HomePage() {
 
     setSelectedFiles((currentFiles) => {
       const mergedFiles = [...currentFiles];
+      const existingKeys = new Set(currentFiles.map((file) => fileKey(file)));
 
       nextFiles.forEach((file) => {
-        if (!mergedFiles.some((existingFile) => fileKey(existingFile) === fileKey(file))) {
+        const key = fileKey(file);
+        if (!existingKeys.has(key)) {
           mergedFiles.push(file);
+          existingKeys.add(key);
         }
       });
 
@@ -125,13 +135,13 @@ export function HomePage() {
           <section className="thumbnail-grid" aria-label="Selected photos">
             {previews.map((preview) => (
               <article key={preview.key} className="card thumbnail-card">
-                <img src={preview.previewUrl} alt={preview.file.name} className="thumbnail-image" />
+                <img src={preview.previewUrl} alt={preview.displayName} className="thumbnail-image" />
                 <div className="thumbnail-meta">
-                  <p className="file-name">{preview.file.name}</p>
+                  <p className="file-name">{preview.displayName}</p>
                   <button
                     type="button"
                     className="remove-button"
-                    aria-label={`Remove ${preview.file.name}`}
+                    aria-label={`Remove ${preview.displayName}`}
                     onClick={() => {
                       setSelectedFiles((currentFiles) => currentFiles.filter((file) => fileKey(file) !== preview.key));
                     }}
