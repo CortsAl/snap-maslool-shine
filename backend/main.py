@@ -96,6 +96,7 @@ def _edit_image(cutout_bytes: bytes, api_key: str) -> str:
             "size": "1024x1024",
             "quality": "high",
         },
+        # High-quality gpt-image-1 edits can take longer than the default timeout.
         timeout=180,
     )
 
