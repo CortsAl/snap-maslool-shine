@@ -1,6 +1,6 @@
 # Maslool Snap & Shine
 
-Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload 1 to 100 raw product images, then the FastAPI backend sends them directly to OpenAI for natural, realistic white-background studio results.
+Maslool Snap & Shine is an AI-powered product photo enhancer. The web app lets you upload up to 100 raw product images at once, then the FastAPI backend sends them directly to OpenAI for polished, natural-looking white-background studio results.
 
 ## Monorepo layout
 
@@ -14,32 +14,32 @@ snap-maslool-shine/
 ## Architecture
 
 ```text
-+--------------------------+
-|  React + Vite web app    |
-|  - multi-photo upload    |
-|  - batch processing UI   |
-|  - gallery + ZIP export  |
-+------------+-------------+
-             |
-             | POST /enhance or /enhance-batch
-             v
-+------------+-------------+
-|  FastAPI backend         |
-|  - validates uploads     |
-|  - calls OpenAI edits    |
-|  - returns base64 images |
-+------------+-------------+
-             |
-             +--> OpenAI GPT-image-1 API
++-----------------------+
+|  React + Vite web app |
+|  - multi-photo upload |
+|  - batch progress UI  |
+|  - result gallery     |
++-----------+-----------+
+            |
+            | POST /enhance or /enhance-batch
+            v
++-----------+-----------+
+|  FastAPI backend      |
+|  - validates upload   |
+|  - calls OpenAI edit  |
+|  - runs batch tasks   |
++-----------+-----------+
+            |
+            +--> OpenAI GPT-image-1 API
 ```
 
 ## What it does
 
-1. Accepts 1 to 100 product photos from the web app at once.
-2. Sends all photos directly to OpenAI `gpt-image-1` with a natural, realistic studio-photo prompt.
-3. Processes images in parallel through the batch API.
-4. Shows results in a gallery with before/after toggles for each photo.
-5. Lets the user download individual enhanced images or all successful results as a ZIP file.
+1. Accepts one or more product photos from the web app.
+2. Sends each original upload directly to OpenAI `gpt-image-1` with a natural, photorealistic studio-photo prompt.
+3. Processes batches of up to 100 images in parallel on the backend.
+4. Returns the final enhanced images to the app as base64 strings.
+5. Lets the user review before/after comparisons and download individual PNGs or a ZIP of all successful results.
 
 ## Backend setup (`/backend`)
 
@@ -136,27 +136,27 @@ The app will run at `http://localhost:3000`.
 ### `POST /enhance-batch`
 
 - Content type: `multipart/form-data`
-- Field: `files` (repeat once per uploaded image)
+- Field: `files` (repeat the field for each image)
 - Maximum files: `100`
 - Success response:
 
 ```json
 {
   "total": 2,
-  "succeeded": 2,
-  "failed": 0,
+  "succeeded": 1,
+  "failed": 1,
   "results": [
     {
       "index": 0,
-      "filename": "photo-1.jpg",
+      "filename": "knife-1.jpg",
       "success": true,
       "image": "<base64>"
     },
     {
       "index": 1,
-      "filename": "photo-2.jpg",
-      "success": true,
-      "image": "<base64>"
+      "filename": "knife-2.jpg",
+      "success": false,
+      "error": "Please upload a valid image file."
     }
   ]
 }
@@ -164,12 +164,16 @@ The app will run at `http://localhost:3000`.
 
 ## Cost estimate per image
 
-Estimated costs vary by current OpenAI pricing, resolution, and your subscription tier, but a reasonable starting estimate is roughly **$0.03-$0.10 per image** depending on image size and pricing changes.
+## Cost estimate per image
+
+- OpenAI GPT-image-1 edit: roughly **$0.03-$0.10** per image depending on image size and pricing changes
+- Multiply by the number of images in a batch to estimate total run cost.
 
 Always verify the latest pricing on the official provider page before launch.
 
 ## Notes
 
 - The web UI uses a dark theme with gold accents for a premium feel.
+- The web flow supports drag-and-drop multi-select, per-photo status badges, and ZIP downloads.
 - The backend loads environment variables with `python-dotenv`.
 - The app is scaffolded for local development first; production deployment will require updating the backend URL and tightening CORS.

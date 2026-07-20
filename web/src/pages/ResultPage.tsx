@@ -1,29 +1,21 @@
 import JSZip from 'jszip';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { sanitizeFileName, toPngFilename } from '../utils/fileNames';
-
-type BatchResult = {
-  index: number;
-  filename: string;
-  success: boolean;
-  image?: string;
-  originalUrl: string;
-  error?: string;
-};
+import type { BatchResult } from '../types/batch';
 
 type ResultState = {
   results: BatchResult[];
 };
 
-function createInitialToggleState(results: BatchResult[]) {
-  return Object.fromEntries(results.map((result) => [result.index, result.success]));
+function getDownloadName(filename: string, index: number) {
+  const baseName = filename.replace(/\.[^.]+$/, '') || `photo-${index + 1}`;
+  return `${baseName}-enhanced.png`;
 }
 
-function downloadBase64Image(filename: string, base64Image: string) {
+function downloadBase64Image(filename: string, image: string) {
   const link = document.createElement('a');
-  link.href = `data:image/png;base64,${base64Image}`;
-  link.download = toPngFilename(filename);
+  link.href = `data:image/png;base64,${image}`;
+  link.download = filename;
   link.click();
 }
 
@@ -31,145 +23,134 @@ export function ResultPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as ResultState | null;
-  const results = Array.isArray(state?.results) ? state.results : [];
+  const [showEnhancedByIndex, setShowEnhancedByIndex] = useState<Record<number, boolean>>({});
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  const [showAfterByIndex, setShowAfterByIndex] = useState<Record<number, boolean>>(() => createInitialToggleState(results));
 
   useEffect(() => {
-    if (!results.length) {
+    if (!state?.results.length) {
       return;
     }
 
     return () => {
-      results.forEach((result) => {
+      state.results.forEach((result) => {
         URL.revokeObjectURL(result.originalUrl);
       });
     };
-  }, [results]);
+  }, [state]);
 
-  const successfulResults = useMemo(() => results.filter((result) => result.success && result.image), [results]);
-
-  if (!results.length) {
+  if (!state?.results.length) {
     return <Navigate to="/" replace />;
   }
 
-  const handleDownloadAll = async () => {
-    if (!successfulResults.length) {
-      return;
-    }
-
-    setDownloadError(null);
-    setIsDownloadingAll(true);
-
-    try {
-      const zip = new JSZip();
-      successfulResults.forEach((result) => {
-        if (!result.image) {
-          return;
-        }
-
-        zip.file(toPngFilename(result.filename), result.image, { base64: true });
-      });
-
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const zipUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = zipUrl;
-      link.download = 'snap-shine-enhanced.zip';
-      link.click();
-      URL.revokeObjectURL(zipUrl);
-    } catch (error) {
-      const detail = error instanceof Error ? `${error.message}. ` : '';
-      setDownloadError(`${detail}We could not create the ZIP download. Please try downloading images individually or refresh the page.`);
-    } finally {
-      setIsDownloadingAll(false);
-    }
-  };
+  const successfulResults = state.results.filter((result) => result.success && result.image);
 
   return (
     <main className="page-shell">
-      <section className="card summary-card">
-        <div className="result-header">
-          <div>
-            <p className="card-label">Batch Results</p>
-            <h2 className="status-title">
-              {successfulResults.length} of {results.length} enhanced successfully
-            </h2>
-            <p className="subtitle">Preview each photo, switch between before and after, then download one image or the full ZIP.</p>
-          </div>
+      <section className="card status-card">
+        <h2 className="status-title">
+          {successfulResults.length} of {state.results.length} enhanced successfully
+        </h2>
+        <p className="subtitle centered">
+          Review each photo, toggle between the original and enhanced versions, then download the results you want to keep.
+        </p>
+
+        <div className="button-row">
           <button
             type="button"
-            className="primary-button"
-            disabled={successfulResults.length === 0 || isDownloadingAll}
-            onClick={() => {
-              void handleDownloadAll();
+            className="primary-button full-width"
+            disabled={!successfulResults.length || isDownloadingZip}
+            onClick={async () => {
+              setDownloadError(null);
+              setIsDownloadingZip(true);
+
+              try {
+                const zip = new JSZip();
+
+                successfulResults.forEach((result) => {
+                  if (!result.image) {
+                    return;
+                  }
+
+                  zip.file(getDownloadName(result.filename, result.index), result.image, {
+                    base64: true,
+                  });
+                });
+
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const downloadUrl = URL.createObjectURL(zipBlob);
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = 'snap-shine-enhanced-photos.zip';
+                link.click();
+                URL.revokeObjectURL(downloadUrl);
+              } catch (error: unknown) {
+                setDownloadError(error instanceof Error ? error.message : 'Could not create the ZIP file.');
+              } finally {
+                setIsDownloadingZip(false);
+              }
             }}
           >
-            {isDownloadingAll ? 'Preparing ZIP…' : '⬇️ Download All'}
+            {isDownloadingZip ? 'Preparing ZIP...' : 'Download All'}
+          </button>
+          <button type="button" className="secondary-button full-width" onClick={() => navigate('/', { replace: true })}>
+            Enhance More
           </button>
         </div>
-        {downloadError ? <p className="error-text">{downloadError}</p> : null}
+
+        {downloadError ? <p className="selection-message">{downloadError}</p> : null}
       </section>
 
-      <section className="result-grid" aria-label="Enhanced photos">
-        {results.map((result) => {
-          const safeFileName = sanitizeFileName(result.filename);
-          const showAfter = Boolean(showAfterByIndex[result.index] && result.success && result.image);
-          const imageSrc = showAfter && result.image ? `data:image/png;base64,${result.image}` : result.originalUrl;
+      <section className="result-grid" aria-label="Batch enhancement results">
+        {state.results.map((result) => {
+          const enhancedImage = result.image;
+          const showEnhanced = showEnhancedByIndex[result.index] ?? result.success;
+          const imageSrc = showEnhanced && enhancedImage ? `data:image/png;base64,${enhancedImage}` : result.originalUrl;
 
           return (
             <article key={`${result.index}-${result.filename}`} className="card result-card">
-              <div className="result-card-header">
-                <p className="file-name">{safeFileName}</p>
+              <div className="thumbnail-header">
+                <div>
+                  <p className="card-label">Photo {result.index + 1}</p>
+                  <p className="thumbnail-name">{result.filename}</p>
+                </div>
                 <span className={`status-badge status-${result.success ? 'done' : 'failed'}`}>
-                  {result.success ? '✅ Done' : '❌ Failed'}
+                  {result.success ? 'Done' : 'Failed'}
                 </span>
               </div>
 
-              <div className="preview-frame">
-                <p className="image-stage-label">{showAfter ? 'After' : 'Before'}</p>
-                <img src={imageSrc} alt={safeFileName} className="preview-image" />
-              </div>
+              <button
+                type="button"
+                className="result-toggle"
+                disabled={!result.success || !result.image}
+                onClick={() =>
+                  setShowEnhancedByIndex((current) => ({
+                    ...current,
+                    [result.index]: !(current[result.index] ?? result.success),
+                  }))
+                }
+              >
+                <div className="toggle-button-row">
+                  <span className={`toggle-chip ${!showEnhanced ? 'toggle-chip-active' : ''}`}>Before</span>
+                  <span className={`toggle-chip ${showEnhanced ? 'toggle-chip-active' : ''}`}>After</span>
+                </div>
+                <img src={imageSrc} alt={result.filename} className="preview-image" />
+              </button>
 
-              {result.success && result.image ? (
+              {result.success && enhancedImage ? (
                 <button
                   type="button"
-                  className="secondary-button full-width toggle-button"
-                  onClick={() => {
-                    setShowAfterByIndex((current) => ({ ...current, [result.index]: !current[result.index] }));
-                  }}
+                  className="secondary-button full-width"
+                  onClick={() => downloadBase64Image(getDownloadName(result.filename, result.index), enhancedImage)}
                 >
-                  {showAfter ? 'Show Before' : 'Show After'}
+                  Download PNG
                 </button>
               ) : (
-                <p className="error-text">{result.error || 'We could not enhance this photo.'}</p>
+                <p className="selection-message">{result.error ?? 'This photo could not be enhanced.'}</p>
               )}
-
-              <div className="result-card-actions">
-                {result.success && result.image ? (
-                  <button
-                    type="button"
-                    className="primary-button full-width"
-                    onClick={() => {
-                      if (result.image) {
-                        downloadBase64Image(result.filename, result.image);
-                      }
-                    }}
-                  >
-                    ⬇️ Download
-                  </button>
-                ) : null}
-              </div>
             </article>
           );
         })}
-      </section>
-
-      <section className="card actions-card">
-        <button type="button" className="secondary-button full-width" onClick={() => navigate('/', { replace: true })}>
-          ✨ Enhance More
-        </button>
       </section>
     </main>
   );

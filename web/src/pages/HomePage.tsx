@@ -1,81 +1,178 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sanitizeFileName } from '../utils/fileNames';
+import { MAX_IMAGE_FILES } from '../constants/uploads';
+import { getFileId } from '../utils/files';
+import { createSafePreviewUrl } from '../utils/previews';
 
-// Keep the frontend limit aligned with the backend /enhance-batch endpoint limit.
-const MAX_FILES = 100;
-const ACCEPTED_IMAGE_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/bmp',
-  'image/tiff',
-] as const;
-const ACCEPT_ATTRIBUTE = ACCEPTED_IMAGE_TYPES.join(',');
+const ACCEPTED_IMAGE_TYPES = '.avif,.bmp,.gif,.heic,.heif,.jpg,.jpeg,.png,.tif,.tiff,.webp';
+const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i;
 
-function fileKey(file: File) {
-  return `${file.name}-${file.size}-${file.lastModified}`;
-}
-
-function isSupportedImageFile(file: File) {
-  return ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number]);
+function isImageFile(file: File) {
+  return file.type.startsWith('image/') || IMAGE_FILE_PATTERN.test(file.name);
 }
 
 export function HomePage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const handedOffToProcessingRef = useRef(false);
+  const previewUrlsRef = useRef<Record<string, string>>({});
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+  const [previewUrlsById, setPreviewUrlsById] = useState<Record<string, string>>({});
+  const [isDragging, setIsDragging] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const previews = useMemo(
-    () =>
-      selectedFiles.map((file) => ({
-        file,
-        key: fileKey(file),
-        displayName: sanitizeFileName(file.name),
-        previewUrl: URL.createObjectURL(file),
-      })),
-    [selectedFiles],
-  );
+  useEffect(() => {
+    previewUrlsRef.current = previewUrlsById;
+  }, [previewUrlsById]);
 
   useEffect(() => {
     return () => {
-      previews.forEach((preview) => {
-        URL.revokeObjectURL(preview.previewUrl);
-      });
+      if (!handedOffToProcessingRef.current) {
+        Object.values(previewUrlsRef.current).forEach((previewUrl) => {
+          URL.revokeObjectURL(previewUrl);
+        });
+      }
     };
-  }, [previews]);
+  }, []);
 
-  const addFiles = (incomingFiles: FileList | File[] | null) => {
-    const nextFiles = Array.from(incomingFiles ?? []).filter((file) => isSupportedImageFile(file));
+  useEffect(() => {
+    let cancelled = false;
+    const activeFileIds = new Set(selectedFiles.map((file) => getFileId(file)));
 
-    if (!nextFiles.length) {
-      setSelectionMessage('Please choose JPEG, PNG, WEBP, GIF, BMP, or TIFF image files.');
+    setPreviewUrlsById((currentPreviewUrls) => {
+      const nextPreviewUrls: Record<string, string> = {};
+
+      Object.entries(currentPreviewUrls).forEach(([fileId, previewUrl]) => {
+        if (activeFileIds.has(fileId)) {
+          nextPreviewUrls[fileId] = previewUrl;
+          return;
+        }
+
+        URL.revokeObjectURL(previewUrl);
+      });
+
+      return nextPreviewUrls;
+    });
+
+    const filesNeedingPreviews = selectedFiles.filter((file) => !previewUrlsRef.current[getFileId(file)]);
+    if (!filesNeedingPreviews.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadPreviews = async () => {
+      const previewEntries = await Promise.all(
+        filesNeedingPreviews.map(async (file) => {
+          try {
+            return {
+              fileId: getFileId(file),
+              previewUrl: await createSafePreviewUrl(file),
+            };
+          } catch {
+            return {
+              fileId: getFileId(file),
+              previewUrl: '',
+            };
+          }
+        }),
+      );
+
+      if (cancelled) {
+        previewEntries.forEach(({ previewUrl }) => {
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+          }
+        });
+        return;
+      }
+
+      setPreviewUrlsById((currentPreviewUrls) => {
+        const nextPreviewUrls = { ...currentPreviewUrls };
+
+        previewEntries.forEach(({ fileId, previewUrl }) => {
+          if (!previewUrl || nextPreviewUrls[fileId]) {
+            if (previewUrl && nextPreviewUrls[fileId] !== previewUrl) {
+              URL.revokeObjectURL(previewUrl);
+            }
+            return;
+          }
+
+          nextPreviewUrls[fileId] = previewUrl;
+        });
+
+        return nextPreviewUrls;
+      });
+
+      if (previewEntries.some(({ previewUrl }) => !previewUrl)) {
+        setErrorMessage('We could not preview one or more selected photos. Please remove them and try again.');
+      }
+    };
+
+    void loadPreviews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFiles]);
+
+  const previewFiles = selectedFiles.map((file) => ({
+    file,
+    id: getFileId(file),
+    url: previewUrlsById[getFileId(file)] ?? '',
+  }));
+  const previewsReady = selectedFiles.every((file) => Boolean(previewUrlsById[getFileId(file)]));
+
+  const handleFiles = (incomingFiles: FileList | File[] | null) => {
+    const files = Array.from(incomingFiles ?? []);
+    if (!files.length) {
       return;
     }
 
+    let skippedNonImages = 0;
+    let skippedDuplicates = 0;
+    let skippedOverflow = 0;
+
     setSelectedFiles((currentFiles) => {
-      const mergedFiles = [...currentFiles];
-      const existingKeys = new Set(currentFiles.map((file) => fileKey(file)));
+      const nextFiles = [...currentFiles];
+      const existingFileIds = new Set(currentFiles.map((file) => getFileId(file)));
 
-      nextFiles.forEach((file) => {
-        const key = fileKey(file);
-        if (!existingKeys.has(key)) {
-          mergedFiles.push(file);
-          existingKeys.add(key);
+      for (const file of files) {
+        if (!isImageFile(file)) {
+          skippedNonImages += 1;
+          continue;
         }
-      });
 
-      if (mergedFiles.length > MAX_FILES) {
-        setSelectionMessage(`You can select up to ${MAX_FILES} photos at once.`);
-        return mergedFiles.slice(0, MAX_FILES);
+        const fileId = getFileId(file);
+        if (existingFileIds.has(fileId)) {
+          skippedDuplicates += 1;
+          continue;
+        }
+
+        if (nextFiles.length >= MAX_IMAGE_FILES) {
+          skippedOverflow += 1;
+          continue;
+        }
+
+        nextFiles.push(file);
+        existingFileIds.add(fileId);
       }
 
-      setSelectionMessage(null);
-      return mergedFiles;
+      return nextFiles;
     });
+
+    const messages = [];
+    if (skippedNonImages) {
+      messages.push(`${skippedNonImages} non-image file${skippedNonImages === 1 ? '' : 's'} skipped.`);
+    }
+    if (skippedDuplicates) {
+      messages.push(`${skippedDuplicates} duplicate photo${skippedDuplicates === 1 ? '' : 's'} skipped.`);
+    }
+    if (skippedOverflow) {
+      messages.push(`Only the first ${MAX_IMAGE_FILES} photos can be added at once.`);
+    }
+
+    setErrorMessage(messages.length ? messages.join(' ') : null);
   };
 
   return (
@@ -84,7 +181,8 @@ export function HomePage() {
         <p className="eyebrow">Maslool Snap &amp; Shine</p>
         <h1 className="title">Snap &amp; Shine</h1>
         <p className="subtitle">
-          Upload 1 to 100 product photos and let OpenAI create natural, realistic studio-quality images in one batch.
+          Upload up to {MAX_IMAGE_FILES} product photos and enhance them in one batch with realistic studio lighting,
+          a clean white background, and natural detail preservation.
         </p>
 
         <div
@@ -97,10 +195,11 @@ export function HomePage() {
           onDrop={(event) => {
             event.preventDefault();
             setIsDragging(false);
-            addFiles(event.dataTransfer.files);
+            handleFiles(event.dataTransfer.files);
           }}
         >
-          <p className="drop-zone-text">Drag &amp; drop up to 100 photos here</p>
+          <p className="drop-zone-text">Drag &amp; drop up to {MAX_IMAGE_FILES} photos here</p>
+          <p className="drop-zone-helper">Multiple images are processed together and returned ready to download.</p>
           <p className="drop-zone-or">or</p>
           <button
             type="button"
@@ -117,61 +216,70 @@ export function HomePage() {
         <input
           ref={fileInputRef}
           type="file"
-          accept={ACCEPT_ATTRIBUTE}
           multiple
+          accept={ACCEPTED_IMAGE_TYPES}
+          capture="environment"
           className="hidden-input"
           onChange={(event) => {
-            addFiles(event.target.files);
+            handleFiles(event.target.files);
             event.target.value = '';
           }}
         />
 
-        <div className="selection-toolbar">
-          <span className="selection-badge">
-            {selectedFiles.length} photo{selectedFiles.length === 1 ? '' : 's'} selected
-          </span>
-          {selectedFiles.length > 0 ? (
-            <button type="button" className="secondary-button small-button" onClick={() => setSelectedFiles([])}>
-              Clear All
-            </button>
-          ) : null}
+        <div className="selection-summary">
+          <p className="selection-count">
+            {selectedFiles.length} / {MAX_IMAGE_FILES} selected
+          </p>
+          {errorMessage ? <p className="selection-message">{errorMessage}</p> : null}
         </div>
 
-        {selectionMessage ? <p className="error-text">{selectionMessage}</p> : null}
-
-        {previews.length > 0 ? (
-          <section className="thumbnail-grid" aria-label="Selected photos">
-            {previews.map((preview) => (
-              <article key={preview.key} className="card thumbnail-card">
-                <img src={preview.previewUrl} alt={preview.displayName} className="thumbnail-image" />
+        {previewFiles.length ? (
+          <section className="thumbnail-grid" aria-label="Selected photo previews">
+            {previewFiles.map((previewFile, index) => (
+              <article key={previewFile.id} className="thumbnail-card">
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Remove ${previewFile.file.name}`}
+                  onClick={() => {
+                    setSelectedFiles((currentFiles) =>
+                      currentFiles.filter((file) => getFileId(file) !== previewFile.id),
+                    );
+                    setErrorMessage(null);
+                  }}
+                >
+                  ×
+                </button>
+                {previewFile.url ? (
+                  <img src={previewFile.url} alt={previewFile.file.name} className="thumbnail-image" />
+                ) : (
+                  <div className="thumbnail-image thumbnail-placeholder" aria-label="Preparing photo preview" />
+                )}
                 <div className="thumbnail-meta">
-                  <p className="file-name">{preview.displayName}</p>
-                  <button
-                    type="button"
-                    className="remove-button"
-                    aria-label={`Remove ${preview.displayName}`}
-                    onClick={() => {
-                      setSelectedFiles((currentFiles) => currentFiles.filter((file) => fileKey(file) !== preview.key));
-                    }}
-                  >
-                    ×
-                  </button>
+                  <p className="thumbnail-name">{previewFile.file.name}</p>
+                  <p className="thumbnail-caption">Photo {index + 1}</p>
                 </div>
               </article>
             ))}
           </section>
         ) : null}
 
-        <div className="action-row">
-          <button
-            type="button"
-            className="primary-button full-width"
-            disabled={selectedFiles.length === 0}
-            onClick={() => navigate('/processing', { state: { imageFiles: selectedFiles } })}
-          >
-            Enhance All Photos
-          </button>
-        </div>
+        <button
+          type="button"
+          className="primary-button full-width"
+          disabled={!selectedFiles.length || !previewsReady}
+          onClick={() => {
+            handedOffToProcessingRef.current = true;
+            navigate('/processing', {
+              state: {
+                imageFiles: selectedFiles,
+                previewUrls: previewUrlsById,
+              },
+            });
+          }}
+        >
+          {previewsReady ? 'Enhance All Photos' : 'Preparing previews...'}
+        </button>
       </section>
     </main>
   );

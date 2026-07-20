@@ -2,69 +2,50 @@ import axios from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../constants/api';
-import { sanitizeFileName } from '../utils/fileNames';
+import type { BatchResult } from '../types/batch';
+import { getFileId } from '../utils/files';
 
-type ProcessingState = { imageFiles: File[] };
-type ProcessingStatus = 'pending' | 'processing' | 'done' | 'failed';
-
-type BatchApiResult = {
-  index: number;
-  filename: string;
-  success: boolean;
-  image?: string;
-  error?: string;
-};
-
+type BatchApiResult = Omit<BatchResult, 'originalUrl'>;
 type BatchEnhanceResponse = {
   total: number;
   succeeded: number;
   failed: number;
   results: BatchApiResult[];
 };
+type ProcessingState = { imageFiles: File[] };
+type FileStatus = 'pending' | 'processing' | 'done' | 'failed';
 
-type BatchResult = BatchApiResult & { originalUrl: string };
-
-// Allow time for the largest supported batch to upload and finish server-side enhancement.
-const TEN_MINUTES_MS = 600000;
-
-const STATUS_LABELS: Record<ProcessingStatus, string> = {
-  pending: '⏳ Pending',
-  processing: '🔄 Processing',
-  done: '✅ Done',
-  failed: '❌ Failed',
+const STATUS_LABELS: Record<FileStatus, string> = {
+  pending: 'Pending',
+  processing: 'Processing',
+  done: 'Done',
+  failed: 'Failed',
 };
-
-function createStatusMap(entries: Array<[number, ProcessingStatus]>) {
-  return entries.reduce<Record<number, ProcessingStatus>>((statusMap, [index, status]) => {
-    statusMap[index] = status;
-    return statusMap;
-  }, {});
-}
 
 export function ProcessingPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const imageFiles = (location.state as ProcessingState | null)?.imageFiles ?? [];
-  const previews = useMemo(
+  const state = location.state as (ProcessingState & { previewUrls?: Record<string, string> }) | null;
+  const imageFiles = state?.imageFiles ?? [];
+  const previewFiles = useMemo(
     () =>
       imageFiles.map((file, index) => ({
         index,
-        filename: file.name,
-        displayName: sanitizeFileName(file.name),
-        originalUrl: URL.createObjectURL(file),
+        file,
+        id: getFileId(file),
+        url: state?.previewUrls?.[getFileId(file)] ?? '',
       })),
-    [imageFiles],
+    [imageFiles, state?.previewUrls],
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [attemptCount, setAttemptCount] = useState(0);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [statuses, setStatuses] = useState<Record<number, ProcessingStatus>>(() =>
-    createStatusMap(imageFiles.map((_, index) => [index, 'pending'])),
-  );
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [fileStatuses, setFileStatuses] = useState<FileStatus[]>(() => imageFiles.map(() => 'pending'));
   const handedOffToResultRef = useRef(false);
 
   useEffect(() => {
-    setStatuses(createStatusMap(imageFiles.map((_, index) => [index, 'pending'])));
+    setFileStatuses(imageFiles.map(() => 'pending'));
+    setOverallProgress(0);
   }, [imageFiles]);
 
   useEffect(() => {
@@ -76,13 +57,13 @@ export function ProcessingPage() {
 
     const enhanceImages = async () => {
       setErrorMessage(null);
-      setUploadProgress(0);
-      setStatuses(createStatusMap(previews.map((preview) => [preview.index, 'processing'])));
+      setFileStatuses(imageFiles.map(() => 'processing'));
+      setOverallProgress(5);
 
       try {
         const formData = new FormData();
-        imageFiles.forEach((file) => {
-          formData.append('files', file);
+        imageFiles.forEach((imageFile) => {
+          formData.append('files', imageFile);
         });
 
         const response = await axios.post<BatchEnhanceResponse>(`${API_BASE_URL}/enhance-batch`, formData, {
@@ -91,48 +72,52 @@ export function ProcessingPage() {
             'Content-Type': 'multipart/form-data',
           },
           signal: controller.signal,
-          timeout: TEN_MINUTES_MS,
+          timeout: 180000,
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) {
+              setOverallProgress(20);
               return;
             }
 
-            setUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
+            const uploadProgress = Math.round((progressEvent.loaded / progressEvent.total) * 30);
+            setOverallProgress(Math.max(5, Math.min(30, uploadProgress)));
           },
         });
 
-        setUploadProgress(100);
-
-        const resultsByIndex = new Map(response.data.results.map((result) => [result.index, result]));
-        const nextResults: BatchResult[] = previews.map((preview) => {
-          const result = resultsByIndex.get(preview.index);
-
-          if (result?.success && result.image) {
-            return { ...result, originalUrl: preview.originalUrl };
+        const results = previewFiles.map<BatchResult>(({ file, index, url }) => {
+          const result = response.data.results[index];
+          if (!result || result.index !== index) {
+            return {
+              index,
+              filename: file.name,
+              success: false,
+              originalUrl: url,
+              error: 'Image processing did not return a result.',
+            };
           }
 
           return {
-            index: preview.index,
-            filename: preview.filename,
-            success: false,
-            originalUrl: preview.originalUrl,
-            error: result?.error || 'We could not enhance this photo.',
+            ...result,
+            originalUrl: url,
           };
         });
 
-        setStatuses(createStatusMap(nextResults.map((result) => [result.index, result.success ? 'done' : 'failed'])));
-
+        setFileStatuses(results.map((result) => (result.success ? 'done' : 'failed')));
+        setOverallProgress(100);
         handedOffToResultRef.current = true;
         navigate('/result', {
           replace: true,
-          state: { results: nextResults },
+          state: {
+            results,
+          },
         });
-      } catch (error) {
+      } catch (error: unknown) {
         if (axios.isAxiosError(error) && error.code === 'ERR_CANCELED') {
           return;
         }
 
-        setStatuses(createStatusMap(previews.map((preview) => [preview.index, 'failed'])));
+        setFileStatuses(imageFiles.map(() => 'failed'));
+        setOverallProgress(0);
 
         if (axios.isAxiosError(error)) {
           const detail = error.response?.data?.detail;
@@ -144,85 +129,78 @@ export function ProcessingPage() {
       }
     };
 
-    enhanceImages();
+    void enhanceImages();
 
     return () => {
       controller.abort();
     };
-  }, [attemptCount, imageFiles, navigate, previews]);
+  }, [attemptCount, imageFiles, navigate, previewFiles]);
 
   useEffect(() => {
     return () => {
       if (!handedOffToResultRef.current) {
-        previews.forEach((preview) => {
-          URL.revokeObjectURL(preview.originalUrl);
+        previewFiles.forEach((previewFile) => {
+          if (previewFile.url) {
+            URL.revokeObjectURL(previewFile.url);
+          }
         });
       }
     };
-  }, [previews]);
+  }, [previewFiles]);
 
   if (!imageFiles.length) {
     return <Navigate to="/" replace />;
   }
 
-  const successfulCount = Object.values(statuses).filter((status) => status === 'done').length;
-  const failedCount = Object.values(statuses).filter((status) => status === 'failed').length;
+  const completedCount = fileStatuses.filter((status) => status === 'done' || status === 'failed').length;
 
   return (
     <main className="page-shell">
-      <section className="card summary-card">
-        <p className="card-label">Batch Processing</p>
-        <h2 className="status-title">Enhancing {imageFiles.length} product photo{imageFiles.length === 1 ? '' : 's'}</h2>
-        <p className="subtitle">
-          Uploading your batch to OpenAI, then processing each image in parallel for a natural studio-quality result.
+      <section className="card status-card">
+        <h2 className="status-title">Enhancing {imageFiles.length} photo{imageFiles.length === 1 ? '' : 's'}...</h2>
+        <p className="subtitle centered">
+          We are sending your original photos directly to OpenAI to create realistic white-background studio images.
         </p>
 
-        <div className="progress-wrapper" aria-label="Upload progress">
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${uploadProgress}%` }} />
-          </div>
-          <p className="progress-label">Upload progress: {uploadProgress}%</p>
+        <div className="progress-bar-shell" aria-label="Overall progress">
+          <div className="progress-bar-fill" style={{ width: `${overallProgress}%` }} />
         </div>
+        <p className="progress-caption">
+          {errorMessage ? 'Processing paused' : `${completedCount} of ${imageFiles.length} completed`} · {overallProgress}%
+        </p>
 
-        <div className="status-summary-row">
-          <span className="status-badge status-pending">Total: {imageFiles.length}</span>
-          <span className="status-badge status-done">Done: {successfulCount}</span>
-          <span className="status-badge status-failed">Failed: {failedCount}</span>
-        </div>
+        {errorMessage ? (
+          <>
+            <p className="subtitle centered">{errorMessage}</p>
+            <div className="button-row">
+              <button type="button" className="primary-button full-width" onClick={() => setAttemptCount((count) => count + 1)}>
+                Retry
+              </button>
+              <button type="button" className="secondary-button full-width" onClick={() => navigate('/', { replace: true })}>
+                Go Back
+              </button>
+            </div>
+          </>
+        ) : null}
       </section>
 
-      {errorMessage ? (
-        <section className="card status-card">
-          <h2 className="status-title">Something went wrong</h2>
-          <p className="subtitle centered">{errorMessage}</p>
-          <button type="button" className="primary-button full-width" onClick={() => setAttemptCount((count) => count + 1)}>
-            Retry
-          </button>
-          <button type="button" className="secondary-button full-width" onClick={() => navigate('/', { replace: true })}>
-            Go Back
-          </button>
-        </section>
-      ) : (
-        <section className="card status-card">
-          <div className="spinner" aria-hidden="true" />
-          <h2 className="status-title">Processing your batch...</h2>
-          <p className="subtitle centered">Each card below updates from pending to processing, then done or failed.</p>
-        </section>
-      )}
-
-      <section className="batch-grid" aria-label="Batch processing status">
-        {previews.map((preview) => {
-          const status = statuses[preview.index] ?? 'pending';
-          return (
-            <article key={`${preview.index}-${preview.filename}`} className="card batch-card">
-              <img src={preview.originalUrl} alt={preview.displayName} className="thumbnail-image" />
-              <div className="batch-card-footer">
-                <p className="file-name">{preview.displayName}</p>
-                <span className={`status-badge status-${status}`}>{STATUS_LABELS[status]}</span>
+      <section className="thumbnail-grid" aria-label="Batch processing queue">
+        {previewFiles.map((previewFile) => (
+          <article key={previewFile.id} className="thumbnail-card">
+            {previewFile.url ? (
+              <img src={previewFile.url} alt={previewFile.file.name} className="thumbnail-image" />
+            ) : (
+              <div className="thumbnail-image thumbnail-placeholder" aria-label="Preparing photo preview" />
+            )}
+            <div className="thumbnail-meta">
+              <div className="thumbnail-header">
+                <p className="thumbnail-name">{previewFile.file.name}</p>
+                <span className={`status-badge status-${fileStatuses[previewFile.index]}`}>{STATUS_LABELS[fileStatuses[previewFile.index]]}</span>
               </div>
-            </article>
-          );
-        })}
+              <p className="thumbnail-caption">Photo {previewFile.index + 1}</p>
+            </div>
+          </article>
+        ))}
       </section>
     </main>
   );
