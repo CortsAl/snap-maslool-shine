@@ -1,0 +1,193 @@
+:root {
+  --bg: #0f0f12;
+  --surface: #18181d;
+  --border: #2f2f37;
+  --accent: #f4c542;
+  --text-primary: #f7f0d8;
+  --text-secondary: #d6d1c4;
+  --radius-lg: 24px;
+  --radius-md: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+.page-shell {
+  width: min(100%, 480px);
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.hero-card {
+  margin-top: 12vh;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 12px 0;
+  font-size: 42px;
+  line-height: 1.1;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.centered {
+  text-align: center;
+}
+
+.drop-zone {
+  margin-top: 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  text-align: center;
+}
+
+.drop-zone-active {
+  border-color: var(--accent);
+  background: #1f1f24;
+}
+
+.drop-zone-text,
+.drop-zone-or {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+}
+
+.drop-zone-or {
+  margin-bottom: 16px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.card-label {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.preview-image {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  background: #101014;
+}
+
+.status-card,
+.actions-card {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.status-title {
+  margin: 0;
+  font-size: 28px;
+}
+
+.spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 4px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.comparison-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 420px) {
+  .comparison-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.primary-button,
+.secondary-button,
+.button-link {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.primary-button,
+.button-link {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.secondary-button {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.full-width {
+  width: 100%;
+}

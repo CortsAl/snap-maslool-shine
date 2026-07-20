@@ -26,7 +26,7 @@ ENHANCEMENT_PROMPT = (
 
 app = FastAPI(title="Maslool Snap & Shine API")
 
-# Allow the Expo app to call the API during local development.
+# Allow the web app to call the API during local development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
